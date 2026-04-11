@@ -77,7 +77,7 @@ class Scanner:
             if any(part.startswith(".") or part in self.ignore_dirs for part in rel_parts):
                 continue
 
-            rel_path_str = str(p.relative_to(self.workspace_path))
+            rel_path_str = p.relative_to(self.workspace_path).as_posix()
             current_paths.add(rel_path_str)
 
             try:

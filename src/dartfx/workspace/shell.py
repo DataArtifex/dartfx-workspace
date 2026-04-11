@@ -199,7 +199,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
 
     def _get_item_info(item: Path):
         is_dir = item.is_dir()
-        rel_path = str(item.relative_to(ctx.workspace.path)) if ctx.workspace.is_initialized() else ""
+        rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
         kb_info = kb_files.get(rel_path)
 
         st = item.stat()
@@ -249,7 +249,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             suffix = "/" if is_dir else ""
             label = f"{item.name}{suffix}"
 
-            rel_path = str(item.relative_to(ctx.workspace.path)) if ctx.workspace.is_initialized() else ""
+            rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
             kb_info = kb_files.get(rel_path)
 
             # Registration status prefix
@@ -314,7 +314,7 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                 branch = tree_node.add(f"[bold blue]{path.name}/[/bold blue]")
                 add_to_tree(path, branch, current_level + 1)
             else:
-                rel_path = str(path.relative_to(ctx.workspace.path)) if ctx.workspace.is_initialized() else ""
+                rel_path = path.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
                 kb_info = kb_files.get(rel_path)
 
                 if kb_info:
@@ -520,7 +520,7 @@ def interact(path: str = typer.Argument(".", help="Workspace root directory")):
     ctx = ShellContext(ws)
 
     completer = WordCompleter(COMMANDS, ignore_case=True)
-    session = PromptSession(history=InMemoryHistory())
+    session: PromptSession = PromptSession(history=InMemoryHistory())
 
     console.print(
         Panel("[bold green]Dartfx Workspace Shell[/bold green]", subtitle="Type 'exit' or press Ctrl-C to quit")

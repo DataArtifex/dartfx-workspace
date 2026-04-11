@@ -4,6 +4,7 @@ RDF Knowledge Base interactions using rdflib.
 
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from rdflib import Graph, Literal, Namespace, URIRef
@@ -78,7 +79,7 @@ class KnowledgeBase:
         self.graph.add((uri, SCHEMA.identifier, Literal(str(uuid))))
 
         # Path and Type
-        self.graph.add((uri, DARTFX.path, Literal(str(path))))
+        self.graph.add((uri, DARTFX.path, Literal(path.as_posix())))
         self.graph.add((uri, DARTFX.filetype, Literal(file_type)))
         self.graph.add((uri, SCHEMA.fileFormat, Literal(file_type)))
 
@@ -126,15 +127,16 @@ class KnowledgeBase:
         """
         results = []
         for row in self.graph.query(q):
+            r: Any = row
             results.append(
                 {
-                    "uuid": str(row.id),
-                    "path": str(row.path),
-                    "size_bytes": int(row.size),
-                    "blake3_hash": str(row.hash),
-                    "type": str(row.type),
-                    "created_at": str(row.created),
-                    "updated_at": str(row.modified),
+                    "uuid": str(r.id),
+                    "path": str(r.path),
+                    "size_bytes": int(r.size),
+                    "blake3_hash": str(r.hash),
+                    "type": str(r.type),
+                    "created_at": str(r.created),
+                    "updated_at": str(r.modified),
                 }
             )
         return results

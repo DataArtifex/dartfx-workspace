@@ -102,7 +102,7 @@ class Workspace:
 
         # Aggregate unregistered
         for p in all_fs_files:
-            rel_path = str(p.relative_to(self.path))
+            rel_path = p.relative_to(self.path).as_posix()
             if rel_path not in registered_paths:
                 unreg_count += 1
                 unreg_size += p.stat().st_size
