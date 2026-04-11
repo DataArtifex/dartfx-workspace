@@ -158,15 +158,12 @@ def format_size(size_bytes: int) -> str:
 
 
 def handle_ls(ctx: ShellContext, args: list[str]):
-    long_format = False
     show_all = False
     show_uuid = False
     human_readable = False
     new_args = []
     for arg in args:
-        if arg in ("-l", "--long"):
-            long_format = True
-        elif arg in ("-a", "--all"):
+        if arg in ("-a", "--all"):
             show_all = True
         elif arg == "--uuid":
             show_uuid = True
@@ -234,51 +231,25 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         suffix = "/" if is_dir else ""
         return mode, size_str, mtime, registered, file_type, file_uuid, f"{item.name}{suffix}"
 
-    if long_format:
-        table = Table(box=None, show_header=True, header_style="bold cyan")
-        table.add_column("Mode", style="dim")
-        table.add_column("Size", justify="right")
-        table.add_column("Modified", style="dim")
-        table.add_column("Reg", justify="center")
-        table.add_column("Type", style="magenta")
-        if show_uuid:
-            table.add_column("UUID", style="dim")
-        table.add_column("Name", style="bold white")
+    table = Table(box=None, show_header=True, header_style="bold cyan")
+    table.add_column("Mode", style="dim")
+    table.add_column("Size", justify="right")
+    table.add_column("Modified", style="dim")
+    table.add_column("Reg", justify="center")
+    table.add_column("Type", style="magenta")
+    if show_uuid:
+        table.add_column("UUID", style="dim")
+    table.add_column("Name", style="bold white")
 
-        for item in sorted(items):
-            if not show_all and item.name.startswith("."):
-                continue
-            info = list(_get_item_info(item))
-            if not show_uuid:
-                info.pop(5)
-            table.add_row(*info)
+    for item in sorted(items):
+        if not show_all and item.name.startswith("."):
+            continue
+        info = list(_get_item_info(item))
+        if not show_uuid:
+            info.pop(5)
+        table.add_row(*info)
 
-        console.print(table)
-    else:
-        for item in sorted(items):
-            if not show_all and item.name.startswith("."):
-                continue
-
-            is_dir = item.is_dir()
-            suffix = "/" if is_dir else ""
-            label = f"{item.name}{suffix}"
-
-            rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
-            kb_info = kb_files.get(rel_path)
-
-            # Registration status prefix
-            if is_dir:
-                reg_prefix = "  "
-            else:
-                reg_prefix = "[green]✔[/green] " if kb_info else "[red]✘[/red] "
-
-            label = f"{reg_prefix}{label}"
-
-            if show_uuid:
-                uuid_str = kb_info["uuid"] if kb_info else "-" * 36
-                label = f"{reg_prefix}[dim blue]{uuid_str}[/dim blue] {item.name}{suffix}"
-
-            console.print(label, highlight=False)
+    console.print(table)
 
 
 def handle_tree(ctx: ShellContext, args: list[str]):
@@ -503,7 +474,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("scan", "Scan workspace and sync to Knowledge Base"),
         ("stats", "Show workspace statistics"),
         ("cd", "Change directory"),
-        ("ls", "List directory contents (-l, -a, -h, --uuid, or glob)"),
+        ("ls", "List directory contents (-a, -h, --uuid, or glob)"),
         ("tree", "Display tree structure (-L level, --uuid)"),
         ("head", "Show first lines of a file (-n number)"),
         ("tail", "Show last lines of a file (-n number)"),
