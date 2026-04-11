@@ -22,6 +22,12 @@ ENRICHABLE_FORMATS: set[FileFormat] = {
     FileFormat.CSV,
     FileFormat.TSV,
     FileFormat.JSON,
+    FileFormat.PDF,
+    FileFormat.XLSX,
+    FileFormat.DOCX,
+    FileFormat.PPTX,
+    FileFormat.ZIP,
+    FileFormat.GZIP,
 }
 
 
@@ -40,6 +46,14 @@ def enrich_attributes(file_path: Path, result: SnifferResult) -> SnifferResult:
         _enrich_delimited(file_path, result)
     elif result.file_format == FileFormat.JSON:
         _enrich_json(file_path, result)
+    elif result.file_format == FileFormat.PDF:
+        _enrich_pdf(file_path, result)
+    elif result.file_format in (FileFormat.XLSX, FileFormat.DOCX, FileFormat.PPTX):
+        _enrich_zip_metadata(file_path, result)
+    elif result.file_format == FileFormat.ZIP:
+        _enrich_zip_metadata(file_path, result, is_archive=True)
+    elif result.file_format == FileFormat.GZIP:
+        _enrich_gzip_metadata(file_path, result)
 
     return result
 
@@ -116,6 +130,73 @@ def _enrich_json(file_path: Path, result: SnifferResult) -> None:
             result.mime_type = "application/ld+json"
             result.confidence = 0.95
     except (json.JSONDecodeError, OSError):
-        # If the JSON is too large to parse from a truncated sample,
-        # or unreadable, we leave the classification as-is
+        # loading huge JSON files, or simply unreadable, leave as-is.
+        pass
+
+
+def _enrich_pdf(file_path: Path, result: SnifferResult) -> None:
+    """Extract version number from PDF header."""
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(15).decode("ascii", errors="ignore")
+            if header.startswith("%PDF-"):
+                # Header format is %PDF-1.x
+                version = header[5:8].strip()
+                result.attributes["fileFormatVersion"] = version
+    except Exception:
+        pass
+
+
+def _enrich_zip_metadata(file_path: Path, result: SnifferResult, is_archive: bool = False) -> None:
+    """Extract basic properties from ZIP-based formats.
+
+    If is_archive=True, also counts files in the zip and extracts comments.
+    """
+    import re
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            if is_archive:
+                result.attributes["itemCount"] = str(len(zf.namelist()))
+                if zf.comment:
+                    result.attributes["fileLabel"] = zf.comment.decode("utf-8", errors="ignore")
+
+            # For Office formats, check app.xml for core stats
+            if "docProps/app.xml" in zf.namelist():
+                with zf.open("docProps/app.xml") as f:
+                    content = f.read().decode("utf-8", errors="ignore")
+
+                    if result.file_format == FileFormat.XLSX:
+                        # Extract sheet count
+                        sheets = re.search(r"<Sheets>(\d+)</Sheets>", content)
+                        if sheets:
+                            result.attributes["sheetCount"] = sheets.group(1)
+
+                    elif result.file_format == FileFormat.DOCX:
+                        words = re.search(r"<Words>(\d+)</Words>", content)
+                        pages = re.search(r"<Pages>(\d+)</Pages>", content)
+                        if words:
+                            result.attributes["wordCount"] = words.group(1)
+                        if pages:
+                            result.attributes["pageCount"] = pages.group(1)
+
+                    elif result.file_format == FileFormat.PPTX:
+                        slides = re.search(r"<Slides>(\d+)</Slides>", content)
+                        if slides:
+                            result.attributes["slideCount"] = slides.group(1)
+    except Exception:
+        pass
+
+
+def _enrich_gzip_metadata(file_path: Path, result: SnifferResult) -> None:
+    """Extract basic GZIP metadata."""
+    try:
+        with open(file_path, "rb") as f:
+            header = f.read(10)
+            if len(header) >= 3 and header[0:2] == b"\x1f\x8b":
+                # Third byte is compression method (8 = deflate)
+                if header[2] == 8:
+                    result.attributes["compressionMethod"] = "deflate"
+    except Exception:
         pass

@@ -172,12 +172,24 @@ We should be able to start the:
 
 ## Roadmap
 
-### File type sniffers and refined classification
-- Significantly improve the file type detection by implementing sniffers rather than relying on file extensions.
-    - The extension provides an initial hint, but the actual file type should be confirmed by examining the content if needed.
-- We also want to refine the categorization by adding levels
-- For data files, we want to differentiate between
-    - Text delimited files, differentiating between CSV, TSV, and other delimited formats
+### File Classification & Sniffing
+The workspace uses a high-performance, two-tier classification system:
+- **FileType**: Broad category (`data`, `metadata`, `documentation`, `code`, `compressed`, `media`, `other`).
+- **FileFormat**: Specific format (`csv`, `parquet`, `sas7bdat`, `pdf`, `python`, `zip`, `png`, etc.).
+
+Classification follows a prioritized pipeline:
+1. **Extension Classifier**: Resolves known extensions (zero I/O).
+2. **Magic Byte Sniffer**: Identifies binary signatures (e.g., `PAR1`, `%PDF-`, `PK\x03\x04`).
+3. **Text Heuristic Sniffer**: Detects delimited tabular data in ambiguous text files using `clevercsv`.
+
+#### Metadata Enrichment
+After classification, specific format attributes are extracted and stored in the Knowledge Base:
+- **Statistical (SAS, Stata, SPSS)**: `fileFormatVersion`, `variableCount`, `rowCount`, `fileLabel`.
+- **Delimited (CSV, TSV)**: `textDelimiter`, `textQuote`.
+- **Documents (PDF)**: `fileFormatVersion`.
+- **Office (XLSX, DOCX, PPTX)**: `sheetCount`, `wordCount`, `pageCount`, `slideCount`.
+- **JSON**: Automatic reclassification to `jsonld` if `@context` is detected.
+
     - Parquet
     - Proprietary formats (SAS, Stata, SPSS, Excel, etc.)
 - The .txt extension is ambiguous as it coubd be data or document
