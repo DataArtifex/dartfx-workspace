@@ -160,15 +160,13 @@ def format_size(size_bytes: int) -> str:
 def handle_ls(ctx: ShellContext, args: list[str]):
     show_all = False
     show_uuid = False
-    human_readable = False
+    human_readable = True
     new_args = []
     for arg in args:
         if arg in ("-a", "--all"):
             show_all = True
         elif arg == "--uuid":
             show_uuid = True
-        elif arg in ("-h", "--human-readable"):
-            human_readable = True
         else:
             new_args.append(arg)
 
@@ -474,7 +472,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("scan", "Scan workspace and sync to Knowledge Base"),
         ("stats", "Show workspace statistics"),
         ("cd", "Change directory"),
-        ("ls", "List directory contents (-a, -h, --uuid, or glob)"),
+        ("ls", "List directory contents (-a, --uuid, or glob)"),
         ("tree", "Display tree structure (-L level, --uuid)"),
         ("head", "Show first lines of a file (-n number)"),
         ("tail", "Show last lines of a file (-n number)"),
