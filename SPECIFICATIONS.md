@@ -2,7 +2,7 @@
 
 Data commonly starts as a stack of files on a drive. Turning this into a high quality products that drive decision making, innovations, and transparency is challenging.
 
-The purpose of this package is to manage such file storage areas (workspaces) focusing on the management and publication of data commodities aligned on the FAIR data principles and easy to consume by both humans and machines. 
+The purpose of this package is to manage such file storage areas (workspaces) focusing on the management and publication of data commodities aligned on the FAIR data principles and easy to consume by both humans and machines.
 
 The objectives are to:
 - create an workspace interactive shell to navigate and manage workspace the workspace
@@ -40,7 +40,7 @@ While this is not a hard requirement, the following folder naming convention and
 - docs: human readable data documentation
 - data: microdata, macrodata, secondary data
 - meta: machine actionable metadata
-- work,temp: temporary or intermediate files 
+- work,temp: temporary or intermediate files
 - .dartfx: a private subdirectory used to store workspace configuration, state, and other operational files
 
 ### .dartfx
@@ -54,7 +54,7 @@ The .dartfx directory holds configuration and state files for the workspace.
 - hooks: AI skills used in the workspace
 - mcp: MCP servers used in the workspace
 
-The default directory name is .dartfx but can be set using a DARTFX_WORKSPACE_DIR environment variable or a workspace .env configuration file. 
+The default directory name is .dartfx but can be set using a DARTFX_WORKSPACE_DIR environment variable or a workspace .env configuration file.
 
 ## Files
 
@@ -73,7 +73,7 @@ Files can also be compressed in formats such as zip, gzip, bz2, xz, etc.
 
 ### Data Files
 
-The collection of data in a workspace can range for a single data file or a hierarchical datasets, to time series, longitudinal studies, or other complex data structures. 
+The collection of data in a workspace can range for a single data file or a hierarchical datasets, to time series, longitudinal studies, or other complex data structures.
 
 Data files can hold observation level microdata, aggregates data tables or indicators, or store secondary reference data.
 
@@ -90,7 +90,7 @@ These are typically stored in JSON/YAML, RDF (turtle, json-ld, N3), XML formats
 
 ### Documentation Files (human readable)
 
-Documentation file hold unstructured human readable information about the data. 
+Documentation file hold unstructured human readable information about the data.
 
 Documentation files formats include:
 - MS-Office: word, powerpoint
@@ -132,11 +132,11 @@ The formats depends on the compression algorithm:
 - **[Bzip2 (.bz2)](https://xceed.com/documentation/xceed-streaming-compression-for-activex/index.html):** Offers higher compression than Gzip but is slower. It is based on the **Burrows-Wheeler Transform** (BWT).
 - **[XZ (.xz)](https://ukiahsmith.com/blog/which-compression-format-to-use-for-archiving/):** A modern format that uses [LZMA2 compression](https://www.2brightsparks.com/resources/articles/data-compression.html), often replacing Bzip2 in Linux distributions due to its superior efficiency.
 - **Brotli (.br):** Developed by Google primarily for web content (HTML, CSS, JS). It often outperforms Gzip for text-based data.
-- **Zstandard (.zst / Zstd):** Created by Meta (Facebook), designed for a balance of high speed and high compression. 
+- **Zstandard (.zst / Zstd):** Created by Meta (Facebook), designed for a balance of high speed and high compression.
 
 ## Knowledge Base
 
-A key feature of a workspace is the available of an RDF knowledge base to capture information about the files and metadata in generic highly granular 
+A key feature of a workspace is the available of an RDF knowledge base to capture information about the files and metadata in generic highly granular
 
 Tools are expected to produce knowledge in RDF, typically as turtle files, that can be loaded on triple stores
 
@@ -156,7 +156,7 @@ A "space" is a virtual storage area that groups workspaces and can be used to:
 ## Phase 1: Core Workspace Management
 In this phase we focus on the workspace management aspect of the package.
 We should be able to start the:
-- start the shell 
+- start the shell
 - initialize a workspace
 - navigate the structure using `cd` and `ls` like commands (/ being the workspace root)
 - create, move, rename, delete files and directories
@@ -164,14 +164,9 @@ We should be able to start the:
     - each file should be register as a resource in the RDF knowledge base
 - categorize file resources (auto detect and manually edit)
 - generate statistics in the content (file counts, size/usage, etc.)
-    
+
 ### File resource
 - a file resource can be describe unsing dublin core os similar standard (potentially with extensions)
 - it should hold metadata such as size, create/update date, hash, etc.
 - each file can have a corresponding RDF description (turtle file) in the knowledge base
 - suggest a good mechanims to name the resource files
-    
-
-
-
-

@@ -1,20 +1,23 @@
 """
 RDF Knowledge Base interactions using rdflib.
 """
+
+from datetime import datetime
 from pathlib import Path
 from uuid import UUID
-from datetime import datetime
 
-from rdflib import Graph, URIRef, Literal, Namespace
+from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF, XSD
 
 DARTFX = Namespace("http://dartfx.org/workspace/")
 SCHEMA = Namespace("https://schema.org/")
 
+
 class KnowledgeBase:
     """
     Manages workspace knowledge base and state persistence using an RDF Graph.
     """
+
     def __init__(self, workspace_path: Path):
         self.workspace_path = workspace_path
         self.kb_dir = self.workspace_path / ".dartfx" / "kb" / "turtle"
@@ -28,7 +31,7 @@ class KnowledgeBase:
         self.graph.bind("dcterms", DCTERMS)
         self.graph.bind("schema", SCHEMA)
         self.graph.bind("dartfx", DARTFX)
-        
+
         for ttl_file in self.resource_dir.glob("*.ttl"):
             self.graph.parse(ttl_file, format="turtle")
 
@@ -51,37 +54,45 @@ class KnowledgeBase:
     def get_resource_uri(self, uuid: UUID) -> URIRef:
         return URIRef(f"urn:uuid:{uuid}")
 
-    def upsert_file_resource(self, uuid: UUID, path: Path, size_bytes: int, blake3_hash: str,
-                             file_type: str, created_at: datetime, updated_at: datetime):
+    def upsert_file_resource(
+        self,
+        uuid: UUID,
+        path: Path,
+        size_bytes: int,
+        blake3_hash: str,
+        file_type: str,
+        created_at: datetime,
+        updated_at: datetime,
+    ):
         """Adds or updates a file resource within the RDF graph."""
         uri = self.get_resource_uri(uuid)
-        
+
         # Clear existing properties for this URI to fully replace it
         self.graph.remove((uri, None, None))
-        
+
         self.graph.add((uri, RDF.type, DARTFX.FileResource))
         self.graph.add((uri, RDF.type, SCHEMA.MediaObject))
-        
+
         # Identifiers
         self.graph.add((uri, DCTERMS.identifier, Literal(str(uuid))))
         self.graph.add((uri, SCHEMA.identifier, Literal(str(uuid))))
-        
+
         # Path and Type
         self.graph.add((uri, DARTFX.path, Literal(str(path))))
         self.graph.add((uri, DARTFX.filetype, Literal(file_type)))
         self.graph.add((uri, SCHEMA.fileFormat, Literal(file_type)))
-        
+
         # Metrics
         self.graph.add((uri, DARTFX.sizeBytes, Literal(size_bytes, datatype=XSD.integer)))
         self.graph.add((uri, SCHEMA.contentSize, Literal(size_bytes, datatype=XSD.integer)))
         self.graph.add((uri, DARTFX.blake3Hash, Literal(blake3_hash)))
-        
+
         # Timestamps
         self.graph.add((uri, DCTERMS.created, Literal(created_at.isoformat(), datatype=XSD.dateTime)))
         self.graph.add((uri, SCHEMA.dateCreated, Literal(created_at.isoformat(), datatype=XSD.dateTime)))
         self.graph.add((uri, DCTERMS.modified, Literal(updated_at.isoformat(), datatype=XSD.dateTime)))
         self.graph.add((uri, SCHEMA.dateModified, Literal(updated_at.isoformat(), datatype=XSD.dateTime)))
-        
+
         # Save this specific resource to its individual file
         self._save_resource(uuid, uri)
 
@@ -113,13 +124,15 @@ class KnowledgeBase:
         """
         results = []
         for row in self.graph.query(q):
-            results.append({
-                "uuid": str(row.id),
-                "path": str(row.path),
-                "size_bytes": int(row.size),
-                "blake3_hash": str(row.hash),
-                "type": str(row.type),
-                "created_at": str(row.created),
-                "updated_at": str(row.modified),
-            })
+            results.append(
+                {
+                    "uuid": str(row.id),
+                    "path": str(row.path),
+                    "size_bytes": int(row.size),
+                    "blake3_hash": str(row.hash),
+                    "type": str(row.type),
+                    "created_at": str(row.created),
+                    "updated_at": str(row.modified),
+                }
+            )
         return results

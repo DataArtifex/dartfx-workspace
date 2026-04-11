@@ -2,19 +2,22 @@
 Workspace scanning and file profiling using BLAKE3 hashes.
 """
 
-from pathlib import Path
 import uuid
 from datetime import datetime
+from pathlib import Path
+
 import blake3
 
 from dartfx.workspace.kb import KnowledgeBase
 from dartfx.workspace.models import FileType
 
+
 class Scanner:
     """
-    Traverses the workspace, computes BLAKE3 hashes, extracts metadata, 
+    Traverses the workspace, computes BLAKE3 hashes, extracts metadata,
     and classifies files using the predefined vocabulary.
     """
+
     def __init__(self, workspace_path: Path, kb: KnowledgeBase):
         self.workspace_path = workspace_path
         self.kb = kb
@@ -31,7 +34,7 @@ class Scanner:
         """Heuristic-based categorization derived from specifications."""
         rel_path = file_path.relative_to(self.workspace_path)
         parts = rel_path.parts
-        
+
         # Folder heuristics
         if len(parts) > 1:
             top_dir = parts[0].lower()
@@ -43,7 +46,7 @@ class Scanner:
                 return FileType.DOCUMENTATION
             if top_dir == "code":
                 return FileType.CODE
-                
+
         # File extension heuristics
         ext = file_path.suffix.lower()
         if ext in {".csv", ".parquet", ".json", ".sas7bdat", ".dta", ".sav"}:
@@ -54,7 +57,7 @@ class Scanner:
             return FileType.DOCUMENTATION
         if ext in {".py", ".java", ".js", ".r", ".sh", ".bat", ".cpp", ".rs"}:
             return FileType.CODE
-            
+
         return FileType.OTHER
 
     def scan(self):
@@ -62,21 +65,21 @@ class Scanner:
         existing_files = self.kb.get_all_files()
         existing_path_map = {f["path"]: f for f in existing_files}
         existing_hash_map = {f["blake3_hash"]: f for f in existing_files}
-        
+
         current_paths = set()
-        
+
         for p in self.workspace_path.rglob("*"):
             if not p.is_file():
                 continue
-            
+
             # Skip ignored directories or hidden files/dirs
             rel_parts = p.relative_to(self.workspace_path).parts
             if any(part.startswith(".") or part in self.ignore_dirs for part in rel_parts):
                 continue
-            
+
             rel_path_str = str(p.relative_to(self.workspace_path))
             current_paths.add(rel_path_str)
-            
+
             try:
                 stat = p.stat()
                 size = stat.st_size
@@ -87,14 +90,20 @@ class Scanner:
                 # Handle unexpected file reading errors gracefully
                 print(f"Skipping {p}: {e}")
                 continue
-            
+
             file_type = self.get_file_type(p).value
-            
+
             if rel_path_str in existing_path_map:
                 old_f = existing_path_map[rel_path_str]
                 if old_f["blake3_hash"] != b3hash or old_f["size_bytes"] != size:
                     self.kb.upsert_file_resource(
-                        uuid.UUID(old_f["uuid"]), p.relative_to(self.workspace_path), size, b3hash, file_type, created, updated
+                        uuid.UUID(old_f["uuid"]),
+                        p.relative_to(self.workspace_path),
+                        size,
+                        b3hash,
+                        file_type,
+                        created,
+                        updated,
                     )
             else:
                 # Path not tracked, check if renamed
@@ -103,7 +112,7 @@ class Scanner:
                     suspected_old_file = existing_hash_map[b3hash]
                     old_path_p = self.workspace_path / suspected_old_file["path"]
                     if not old_path_p.exists():
-                        # It's a rename! Recover the UUID 
+                        # It's a rename! Recover the UUID
                         uuid_to_use = uuid.UUID(suspected_old_file["uuid"])
                         del existing_hash_map[b3hash]
 
@@ -118,5 +127,5 @@ class Scanner:
         for f in updated_kb_files:
             if f["path"] not in current_paths:
                 self.kb.remove_file_resource(uuid.UUID(f["uuid"]))
-        
+
         self.kb.save()

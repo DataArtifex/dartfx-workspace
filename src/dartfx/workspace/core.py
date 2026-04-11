@@ -4,30 +4,31 @@ Core workspace management module.
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from dartfx.workspace.kb import KnowledgeBase
-from dartfx.workspace.models import WorkspaceStats, FileType
+from dartfx.workspace.models import FileType, WorkspaceStats
 from dartfx.workspace.scanner import Scanner
+
 
 class Workspace:
     """
-    Facade for managing workspace initialization and orchestrating 
+    Facade for managing workspace initialization and orchestrating
     scans and Knowledge Base interactions.
     """
-    def __init__(self, path: Optional[Path] = None):
+
+    def __init__(self, path: Path | None = None):
         self.path = path or Path(os.getcwd())
         self.path = self.path.resolve()
-        
+
         # Check environment variable first before falling back to .dartfx as per specs
         env_dir = os.environ.get("DARTFX_WORKSPACE_DIR", ".dartfx")
         self.dartfx_dir = self.path / env_dir
-        
-        self._kb: Optional[KnowledgeBase] = None
-        self._scanner: Optional[Scanner] = None
+
+        self._kb: KnowledgeBase | None = None
+        self._scanner: Scanner | None = None
 
     @classmethod
-    def init(cls, path: Optional[Path] = None, create_dirs: bool = False) -> "Workspace":
+    def init(cls, path: Path | None = None, create_dirs: bool = False) -> "Workspace":
         ws = cls(path)
         ws.dartfx_dir.mkdir(parents=True, exist_ok=True)
         if create_dirs:
@@ -64,7 +65,7 @@ class Workspace:
         # 1. Get registered files from KB
         kb_files = self.kb.get_all_files()
         registered_paths = {f["path"] for f in kb_files}
-        
+
         # 2. Get all files from filesystem (excluding ignored)
         all_fs_files = []
         ignore_dirs = {".dartfx", ".git", "__pycache__", "venv", ".venv"}
@@ -75,16 +76,16 @@ class Workspace:
             if any(part.startswith(".") or part in ignore_dirs for part in rel_parts):
                 continue
             all_fs_files.append(p)
-            
+
         # 3. Calculate metrics
-        from dartfx.workspace.models import FileTypeStats # Importing here to avoid potential circular if any
-        
+        from dartfx.workspace.models import FileTypeStats  # Importing here to avoid potential circular if any
+
         types_info = {t: FileTypeStats() for t in FileType}
         reg_count = 0
         reg_size = 0
         unreg_count = 0
         unreg_size = 0
-        
+
         # Aggregate registered
         for f in kb_files:
             type_str = f["type"]
@@ -95,17 +96,17 @@ class Workspace:
                 type_enum = FileType(type_str)
             except ValueError:
                 type_enum = FileType.OTHER
-            
+
             types_info[type_enum].count += 1
             types_info[type_enum].size_bytes += size
-            
+
         # Aggregate unregistered
         for p in all_fs_files:
             rel_path = str(p.relative_to(self.path))
             if rel_path not in registered_paths:
                 unreg_count += 1
                 unreg_size += p.stat().st_size
-                
+
         return WorkspaceStats(
             total_files=reg_count + unreg_count,
             total_size_bytes=reg_size + unreg_size,
@@ -113,5 +114,5 @@ class Workspace:
             registered_size_bytes=reg_size,
             unregistered_count=unreg_count,
             unregistered_size_bytes=unreg_size,
-            types_info=types_info
+            types_info=types_info,
         )

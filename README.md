@@ -79,7 +79,7 @@ hatch run docs:build
 ```
 
 
- 
+
 ## Usage
 
 ...
@@ -89,6 +89,5 @@ hatch run docs:build
 ...
 
 ## Contributing
- 
-Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and information on how to get started.
 
+Contributions are welcome! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines and information on how to get started.
