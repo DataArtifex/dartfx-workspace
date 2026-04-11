@@ -499,6 +499,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("help, ?", "Show this help message"),
         ("exit, quit", "Exit the shell"),
     ]
+    help_text.sort()
     for cmd, desc in help_text:
         table.add_row(cmd, desc)
 
