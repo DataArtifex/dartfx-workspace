@@ -105,8 +105,8 @@ class KnowledgeBase:
         self.graph.add((uri, RDF.type, SCHEMA.MediaObject))
 
         # Identifiers
+        self.graph.add((uri, DARTFX.uuid, Literal(str(uuid))))
         self.graph.add((uri, DCTERMS.identifier, Literal(str(uuid))))
-        self.graph.add((uri, SCHEMA.identifier, Literal(str(uuid))))
 
         # Path and Type
         self.graph.add((uri, DARTFX.path, Literal(path.as_posix())))
@@ -116,7 +116,7 @@ class KnowledgeBase:
         # Metrics
         self.graph.add((uri, DARTFX.sizeBytes, Literal(size_bytes, datatype=XSD.integer)))
         self.graph.add((uri, SCHEMA.contentSize, Literal(size_bytes, datatype=XSD.integer)))
-        self.graph.add((uri, DARTFX.blake3Hash, Literal(blake3_hash)))
+        self.graph.add((uri, DARTFX.blake3, Literal(blake3_hash)))
 
         # Timestamps
         self.graph.add((uri, DCTERMS.created, Literal(created_at.isoformat(), datatype=XSD.dateTime)))
@@ -148,13 +148,13 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?id ?size ?hash ?type ?created ?modified
+        SELECT ?uri ?uuid ?size ?hash ?type ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
-                 dcterms:identifier ?id ;
+                 dartfx:uuid ?uuid ;
                  dartfx:path ?path ;
                  dartfx:sizeBytes ?size ;
-                 dartfx:blake3Hash ?hash ;
+                 dartfx:blake3 ?hash ;
                  dartfx:filetype ?type ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
@@ -163,7 +163,7 @@ class KnowledgeBase:
         for row in self.graph.query(q, initBindings={"path": Literal(path_str)}):
             r: Any = row
             return {
-                "uuid": str(r.id),
+                "uuid": str(r.uuid),
                 "path": path_str,
                 "size_bytes": int(r.size),
                 "blake3_hash": str(r.hash),
@@ -181,13 +181,13 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?id ?path ?size ?hash ?type ?created ?modified
+        SELECT ?uri ?uuid ?path ?size ?hash ?type ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
-                 dcterms:identifier ?id ;
+                 dartfx:uuid ?uuid ;
                  dartfx:path ?path ;
                  dartfx:sizeBytes ?size ;
-                 dartfx:blake3Hash ?hash ;
+                 dartfx:blake3 ?hash ;
                  dartfx:filetype ?type ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
@@ -198,7 +198,7 @@ class KnowledgeBase:
             r: Any = row
             results.append(
                 {
-                    "uuid": str(r.id),
+                    "uuid": str(r.uuid),
                     "path": str(r.path),
                     "size_bytes": int(r.size),
                     "blake3_hash": str(r.hash),

@@ -168,9 +168,10 @@ We should be able to start the:
 - generate statistics on the content (file type breakdown, registration status, size/usage, etc.)
 
 ### File resource
-- Each file resource is described using a combination of **Dublin Core** (`dcterms`) and **Schema.org** (`schema:`) standards.
+- Each file resource is described using a combination of **Dublin Core** (`dcterms`), **Schema.org** (`schema:`), and **Dartfx** standards.
 - File resources are mapped to `schema:MediaObject` for broad interoperability.
-- Resources hold metadata such as size, create/update dates, BLAKE3 hash, file type, and a stable UUID.
+- Resources hold metadata such as size (`dartfx:sizeBytes`), created/updated dates, BLAKE3 hash (`dartfx:blake3`), file type, and a stable UUID (`dartfx:uuid`).
+- The stable `dartfx:uuid` is the primary identifier for internal tracking, while `dcterms:identifier` is initialized to the same value but can be modified by users.
 - Each file has a corresponding RDF description (`resources.ttl`) stored in the `.dartfx/kb/workspace/` mirroring directory.
 - Registration status is indicated in the shell using visual cues: **✔** (Registered) and **✘** (Unregistered).
 - A stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325`) ensures tracking persistence across file renames or moves.
