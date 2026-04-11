@@ -59,7 +59,7 @@ The default directory name is .dartfx but can be set using a DARTFX_WORKSPACE_DI
 ## Files
 
 ### File types
-Files in a workspace can be classified as:
+Files in a workspace can be classified into specific types:
 - data
 - metadata
 - documentation
@@ -136,15 +136,16 @@ The formats depends on the compression algorithm:
 
 ## Knowledge Base
 
-A key feature of a workspace is the available of an RDF knowledge base to capture information about the files and metadata in generic highly granular
+A key feature of a workspace is the availability of an RDF knowledge base to capture information about the files and metadata in a generic, highly granular manner.
 
-Tools are expected to produce knowledge in RDF, typically as turtle files, that can be loaded on triple stores
+The Knowledge Base uses the primary namespace `https://dataartifex.org/workspace/`.
 
-This knowledge base lives in a dedicated directory (e.g. `kb`), with dedicated sub-folders for file and triple-store storage, such as:
-- `turtle`
-- `oxigraph`
-- `qlever`
-- `virtuoso`
+Tools are expected to produce knowledge in RDF, typically as turtle files, that can be loaded onto triple stores. For modularity and performance, file resource metadata is stored in individual turtle files named after the resource's UUID.
+
+This knowledge base lives in a dedicated directory (e.g. `.dartfx/kb`), with dedicated sub-folders for file metadata and triple-store storage, such as:
+- `turtle/files`: Individual turtle files for each registered resource (e.g., `<uuid>.ttl`).
+- `oxigraph`: Embedded triple store for query performance.
+- `qlever`: High-performance SPARQL engine integration.
 
 ## Spaces
 
@@ -158,15 +159,18 @@ In this phase we focus on the workspace management aspect of the package.
 We should be able to start the:
 - start the shell
 - initialize a workspace
-- navigate the structure using `cd` and `ls` like commands (/ being the workspace root)
+- navigate the structure using `cd`, `ls`, and `tree` commands (`/` being the workspace root)
+- Inspect file contents using `head` and `tail` commands
 - create, move, rename, delete files and directories
-- scan the workspace an maintain an inventory of its content
-    - each file should be register as a resource in the RDF knowledge base
-- categorize file resources (auto detect and manually edit)
-- generate statistics in the content (file counts, size/usage, etc.)
+- scan the workspace and maintain an inventory of its content
+    - each file should be registered as a resource in the RDF knowledge base
+- categorize file resources into types (auto-detect and manually edit)
+- generate statistics on the content (file type breakdown, registration status, size/usage, etc.)
 
 ### File resource
-- a file resource can be describe unsing dublin core os similar standard (potentially with extensions)
-- it should hold metadata such as size, create/update date, hash, etc.
-- each file can have a corresponding RDF description (turtle file) in the knowledge base
-- suggest a good mechanims to name the resource files
+- Each file resource is described using a combination of **Dublin Core** (`dcterms`) and **Schema.org** (`schema:`) standards.
+- File resources are mapped to `schema:MediaObject` for broad interoperability.
+- Resources hold metadata such as size, create/update dates, BLAKE3 hash, file type, and a stable UUID.
+- Each file has a corresponding RDF description (turtle file) stored in the `.dartfx/kb/turtle/files/` directory.
+- Registration status is indicated in the shell using visual cues: **✔** (Registered) and **✘** (Unregistered).
+- Resource files are named using their stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325.ttl`) to ensure persistence across renames.
