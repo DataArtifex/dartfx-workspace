@@ -10,13 +10,13 @@ from pathlib import Path
 import blake3
 
 from dartfx.workspace.kb import KnowledgeBase
-from dartfx.workspace.models import FileType
+from dartfx.workspace.sniffers import sniff_file
 
 
 class Scanner:
     """
     Traverses the workspace, computes BLAKE3 hashes, extracts metadata,
-    and classifies files using the predefined vocabulary.
+    and classifies files using the sniffer pipeline.
     """
 
     def __init__(self, workspace_path: Path, kb: KnowledgeBase):
@@ -31,35 +31,15 @@ class Scanner:
                 hasher.update(chunk)
         return hasher.hexdigest()
 
-    def get_file_type(self, file_path: Path) -> FileType:
-        """Heuristic-based categorization derived from specifications."""
-        rel_path = file_path.relative_to(self.workspace_path)
-        parts = rel_path.parts
-
-        # Folder heuristics
-        if len(parts) > 1:
-            top_dir = parts[0].lower()
-            if top_dir == "data":
-                return FileType.DATA
-            if top_dir in ("meta", "metadata"):
-                return FileType.METADATA
-            if top_dir in ("docs", "documentation"):
-                return FileType.DOCUMENTATION
-            if top_dir == "code":
-                return FileType.CODE
-
-        # File extension heuristics
-        ext = file_path.suffix.lower()
-        if ext in {".csv", ".parquet", ".json", ".sas7bdat", ".dta", ".sav"}:
-            return FileType.DATA
-        if ext in {".ttl", ".jsonld", ".n3", ".xml", ".yaml", ".yml"}:
-            return FileType.METADATA
-        if ext in {".md", ".html", ".pdf", ".docx", ".pptx", ".txt"}:
-            return FileType.DOCUMENTATION
-        if ext in {".py", ".java", ".js", ".r", ".sh", ".bat", ".cpp", ".rs"}:
-            return FileType.CODE
-
-        return FileType.OTHER
+    def _sniff(self, file_path: Path) -> tuple[str, str, str | None, dict[str, str]]:
+        """Run the sniffer pipeline and return (type, format, mime, attributes)."""
+        result = sniff_file(file_path, self.workspace_path)
+        return (
+            result.file_type.value,
+            result.file_format.value,
+            result.mime_type,
+            result.attributes,
+        )
 
     def scan(self, status_callback: Callable[[str], None] | None = None):
         """Scans the workspace and synchronizes with the Knowledge Base."""
@@ -95,7 +75,7 @@ class Scanner:
                 print(f"Skipping {p}: {e}")
                 continue
 
-            file_type = self.get_file_type(p).value
+            file_type, file_format, mime_type, attributes = self._sniff(p)
 
             if rel_path_str in existing_path_map:
                 old_f = existing_path_map[rel_path_str]
@@ -108,6 +88,9 @@ class Scanner:
                         file_type,
                         created,
                         updated,
+                        file_format=file_format,
+                        mime_type=mime_type,
+                        attributes=attributes,
                     )
             else:
                 # Path not tracked, check if renamed
@@ -121,7 +104,16 @@ class Scanner:
                         del existing_hash_map[b3hash]
 
                 self.kb.upsert_file_resource(
-                    uuid_to_use, p.relative_to(self.workspace_path), size, b3hash, file_type, created, updated
+                    uuid_to_use,
+                    p.relative_to(self.workspace_path),
+                    size,
+                    b3hash,
+                    file_type,
+                    created,
+                    updated,
+                    file_format=file_format,
+                    mime_type=mime_type,
+                    attributes=attributes,
                 )
 
         self.kb.save()
@@ -163,7 +155,7 @@ class Scanner:
             print(f"Skipping targeted scan of {p}: {e}")
             return
 
-        file_type = self.get_file_type(p).value
+        file_type, file_format, mime_type, attributes = self._sniff(p)
         existing_info = self.kb.get_file_by_path(rel_path_str)
 
         if existing_info:
@@ -176,11 +168,22 @@ class Scanner:
                     file_type,
                     created,
                     updated,
+                    file_format=file_format,
+                    mime_type=mime_type,
+                    attributes=attributes,
                 )
         else:
-            # We assume a completely new UUID for this targeted drop.
             self.kb.upsert_file_resource(
-                uuid.uuid4(), p.relative_to(self.workspace_path), size, b3hash, file_type, created, updated
+                uuid.uuid4(),
+                p.relative_to(self.workspace_path),
+                size,
+                b3hash,
+                file_type,
+                created,
+                updated,
+                file_format=file_format,
+                mime_type=mime_type,
+                attributes=attributes,
             )
 
     def handle_move(self, src: Path, actual_dst: Path):
@@ -188,7 +191,6 @@ class Scanner:
         src_rel = src.relative_to(self.workspace_path).as_posix()
         dst_rel = actual_dst.relative_to(self.workspace_path).as_posix()
 
-        # We query the entire list instead of multiple get_file_by_path if moving a directory root
         all_files = self.kb.get_all_files()
         for f in all_files:
             f_path = f["path"]
@@ -196,7 +198,7 @@ class Scanner:
                 new_rel = f_path.replace(src_rel, dst_rel, 1)
                 new_path_obj = self.workspace_path / Path(new_rel)
 
-                file_type = self.get_file_type(new_path_obj).value
+                file_type, file_format, mime_type, attributes = self._sniff(new_path_obj)
                 try:
                     stat = new_path_obj.stat()
                     created = datetime.fromtimestamp(stat.st_ctime)
@@ -212,6 +214,9 @@ class Scanner:
                     file_type,
                     created,
                     updated,
+                    file_format=file_format,
+                    mime_type=mime_type,
+                    attributes=attributes,
                 )
 
     def handle_remove(self, target: Path):

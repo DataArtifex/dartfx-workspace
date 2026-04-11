@@ -88,6 +88,10 @@ class KnowledgeBase:
         file_type: str,
         created_at: datetime,
         updated_at: datetime,
+        *,
+        file_format: str = "undetermined",
+        mime_type: str | None = None,
+        attributes: dict[str, str] | None = None,
     ):
         """Adds or updates a file resource within the RDF graph."""
         uri = self.get_resource_uri(uuid)
@@ -113,6 +117,11 @@ class KnowledgeBase:
         self.graph.add((uri, DARTFX.filetype, Literal(file_type)))
         self.graph.add((uri, SCHEMA.fileFormat, Literal(file_type)))
 
+        # Format classification
+        self.graph.add((uri, DARTFX.fileformat, Literal(file_format)))
+        if mime_type:
+            self.graph.add((uri, DARTFX.mimeType, Literal(mime_type)))
+
         # Metrics
         self.graph.add((uri, DARTFX.sizeBytes, Literal(size_bytes, datatype=XSD.integer)))
         self.graph.add((uri, SCHEMA.contentSize, Literal(size_bytes, datatype=XSD.integer)))
@@ -123,6 +132,11 @@ class KnowledgeBase:
         self.graph.add((uri, SCHEMA.dateCreated, Literal(created_at.isoformat(), datatype=XSD.dateTime)))
         self.graph.add((uri, DCTERMS.modified, Literal(updated_at.isoformat(), datatype=XSD.dateTime)))
         self.graph.add((uri, SCHEMA.dateModified, Literal(updated_at.isoformat(), datatype=XSD.dateTime)))
+
+        # Format-specific attributes (e.g. textDelimiter, fileFormatVersion)
+        if attributes:
+            for key, value in attributes.items():
+                self.graph.add((uri, DARTFX[key], Literal(value)))
 
         # Save this specific resource to its individual directory
         self._save_resource(uri, path)
@@ -148,7 +162,7 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?size ?hash ?type ?created ?modified
+        SELECT ?uri ?uuid ?size ?hash ?type ?format ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -156,6 +170,7 @@ class KnowledgeBase:
                  dartfx:sizeBytes ?size ;
                  dartfx:blake3 ?hash ;
                  dartfx:filetype ?type ;
+                 dartfx:fileformat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
         }
@@ -168,6 +183,7 @@ class KnowledgeBase:
                 "size_bytes": int(r.size),
                 "blake3_hash": str(r.hash),
                 "type": str(r.type),
+                "file_format": str(r.format),
                 "created_at": str(r.created),
                 "updated_at": str(r.modified),
             }
@@ -181,7 +197,7 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?path ?size ?hash ?type ?created ?modified
+        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -189,6 +205,7 @@ class KnowledgeBase:
                  dartfx:sizeBytes ?size ;
                  dartfx:blake3 ?hash ;
                  dartfx:filetype ?type ;
+                 dartfx:fileformat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
         }
@@ -203,6 +220,7 @@ class KnowledgeBase:
                     "size_bytes": int(r.size),
                     "blake3_hash": str(r.hash),
                     "type": str(r.type),
+                    "file_format": str(r.format),
                     "created_at": str(r.created),
                     "updated_at": str(r.modified),
                 }

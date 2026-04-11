@@ -147,13 +147,6 @@ This knowledge base lives in a dedicated directory (e.g. `.dartfx/kb`), with ded
 - `oxigraph`: Embedded triple store for query performance.
 - `qlever`: High-performance SPARQL engine integration.
 
-## Spaces
-
-A "space" is a virtual storage area that groups workspaces and can be used to:
-- control access to the underlying workspace
-- limit the total amount of storage used by its underlying workspace
-- report on content
-
 ## Phase 1: Core Workspace Management
 In this phase we focus on the workspace management aspect of the package.
 We should be able to start the:
@@ -175,3 +168,57 @@ We should be able to start the:
 - Each file has a corresponding RDF description (`resources.ttl`) stored in the `.dartfx/kb/workspace/` mirroring directory.
 - Registration status is indicated in the shell using visual cues: **✔** (Registered) and **✘** (Unregistered).
 - A stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325`) ensures tracking persistence across file renames or moves.
+
+
+## Roadmap
+
+### File type sniffers and refined classification
+- Significantly improve the file type detection by implementing sniffers rather than relying on file extensions.
+    - The extension provides an initial hint, but the actual file type should be confirmed by examining the content if needed.
+- We also want to refine the categorization by adding levels
+- For data files, we want to differentiate between
+    - Text delimited files, differentiating between CSV, TSV, and other delimited formats
+    - Parquet
+    - Proprietary formats (SAS, Stata, SPSS, Excel, etc.)
+- The .txt extension is ambiguous as it coubd be data or document
+- The .dat extension is ambiguous as it could be data in opne text format or prorietary
+- Different types can carry different attributes. For example
+    - CSV files have a delimiter, a quote character, and an escape character
+    - SAS, Stata, SPSS files may have a version
+    - etc.
+- Potentially leverage adapters for the sniffers
+
+### Tooling
+
+A set of recommended tools should be provided to help users manage their workspaces.
+The package should be able to detect the presence of these tools in the user's environment and provide automatic install if missing (or guidance as how to install if auto-install is not possible).
+
+#### QSV Tool
+- The QVS Data Warngling Toolkit is a critical component of the workspace toolset.
+- It is a command line tool that can be used to perform a variety of data wrangling operations.
+- Our dartfx-qsv package implements the necessary interfaces to call the various underlying commands and verufy installation
+- The shell will define proxy commands that use the dartfx-qsv package to call the various underlying QSV commands
+
+#### ReadStat
+- ReadStat is a C library for reading and writing SAS, SPSS, and Stata data files.
+- A python wrapper is available (https://github.com/joshualoyd/pyreadstat)
+- We should leverage this wrapper to implement the necessary interfaces to call the various underlying commands and verufy installation
+- The shell will define proxy commands that use the dartfx-readstat package to call the various underlying ReadStat commands
+
+### Focus On command and context
+- Various stages of the FAIR data lifecycle requires different tools.
+- We should implement a `focuson` command that will determie which command and tools are currently active (or visible in help)
+- The default focus is `general`
+- We can then configure other focuses that filter (inlcude/exclude tools and commands)
+- This should be in the workspace configuration file
+
+### Work On command and context
+- We often work on specific data file
+- We should implement a `workon` command that sets this in the context to support commmands that opoerate on data files
+- The file being 'worked on' will then be used as 'default'
+
+## Spaces
+A `space` is a virtual storage area that groups workspaces and can be used to:
+- control access to the underlying workspace
+- limit the total amount of storage used by its underlying workspace
+- report on content

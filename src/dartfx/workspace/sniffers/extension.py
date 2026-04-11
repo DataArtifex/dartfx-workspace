@@ -1,0 +1,121 @@
+"""
+Step 1: Extension-based classifier.
+
+Zero I/O — resolves type and format from file extension and folder heuristics.
+"""
+
+from pathlib import Path
+
+from dartfx.workspace.sniffers.models import FileFormat, FileType, SnifferResult
+
+# Extension → (FileType, FileFormat) mapping
+# Ambiguous extensions (e.g. .txt, .dat) are NOT included here;
+# they fall through to content-based sniffers.
+EXTENSION_MAP: dict[str, tuple[FileType, FileFormat]] = {
+    # Data formats
+    ".csv": (FileType.DATA, FileFormat.CSV),
+    ".tsv": (FileType.DATA, FileFormat.TSV),
+    ".parquet": (FileType.DATA, FileFormat.PARQUET),
+    ".sas7bdat": (FileType.DATA, FileFormat.SAS7BDAT),
+    ".dta": (FileType.DATA, FileFormat.DTA),
+    ".sav": (FileType.DATA, FileFormat.SAV),
+    ".xlsx": (FileType.DATA, FileFormat.XLSX),
+    ".xls": (FileType.DATA, FileFormat.XLS),
+    # Metadata formats — JSON is metadata by default in this domain
+    ".json": (FileType.METADATA, FileFormat.JSON),
+    ".jsonld": (FileType.METADATA, FileFormat.JSONLD),
+    ".ttl": (FileType.METADATA, FileFormat.TURTLE),
+    ".n3": (FileType.METADATA, FileFormat.N3),
+    ".xml": (FileType.METADATA, FileFormat.XML),
+    ".yaml": (FileType.METADATA, FileFormat.YAML),
+    ".yml": (FileType.METADATA, FileFormat.YAML),
+    # Documentation formats
+    ".md": (FileType.DOCUMENTATION, FileFormat.MARKDOWN),
+    ".html": (FileType.DOCUMENTATION, FileFormat.HTML),
+    ".htm": (FileType.DOCUMENTATION, FileFormat.HTML),
+    ".pdf": (FileType.DOCUMENTATION, FileFormat.PDF),
+    ".docx": (FileType.DOCUMENTATION, FileFormat.DOCX),
+    ".pptx": (FileType.DOCUMENTATION, FileFormat.PPTX),
+    # Code formats
+    ".py": (FileType.CODE, FileFormat.PYTHON),
+    ".r": (FileType.CODE, FileFormat.R),
+    ".sas": (FileType.CODE, FileFormat.SAS_SYNTAX),
+    ".do": (FileType.CODE, FileFormat.STATA_SYNTAX),
+    ".sps": (FileType.CODE, FileFormat.SPSS_SYNTAX),
+    ".sh": (FileType.CODE, FileFormat.SHELL),
+    ".bat": (FileType.CODE, FileFormat.SHELL),
+    ".cmd": (FileType.CODE, FileFormat.SHELL),
+    ".js": (FileType.CODE, FileFormat.JAVASCRIPT),
+    ".java": (FileType.CODE, FileFormat.JAVA),
+    ".cpp": (FileType.CODE, FileFormat.CPP),
+    ".c": (FileType.CODE, FileFormat.CPP),
+    ".h": (FileType.CODE, FileFormat.CPP),
+    ".rs": (FileType.CODE, FileFormat.RUST),
+}
+
+# Ambiguous extensions that need content-based sniffing
+AMBIGUOUS_EXTENSIONS: set[str] = {".txt", ".dat"}
+
+# Folder name → FileType boost
+FOLDER_TYPE_MAP: dict[str, FileType] = {
+    "data": FileType.DATA,
+    "meta": FileType.METADATA,
+    "metadata": FileType.METADATA,
+    "docs": FileType.DOCUMENTATION,
+    "documentation": FileType.DOCUMENTATION,
+    "code": FileType.CODE,
+}
+
+
+def classify_by_extension(
+    file_path: Path,
+    workspace_path: Path | None = None,
+) -> SnifferResult | None:
+    """Classify a file by its extension and optional folder heuristic.
+
+    Returns None if the extension is ambiguous or unrecognized, signaling
+    that content-based sniffers should take over for classification.
+    Returns a SnifferResult (possibly with needs_enrichment implied by format)
+    if the extension is unambiguous.
+    """
+    ext = file_path.suffix.lower()
+
+    # Check folder heuristic for type boost
+    folder_type: FileType | None = None
+    if workspace_path:
+        try:
+            rel_parts = file_path.relative_to(workspace_path).parts
+            if len(rel_parts) > 1:
+                top_dir = rel_parts[0].lower()
+                folder_type = FOLDER_TYPE_MAP.get(top_dir)
+        except ValueError:
+            pass
+
+    # Ambiguous extensions → signal content sniffing needed
+    if ext in AMBIGUOUS_EXTENSIONS or ext == "":
+        if folder_type:
+            return SnifferResult(
+                file_type=folder_type,
+                file_format=FileFormat.UNDETERMINED,
+                confidence=0.3,
+            )
+        return None
+
+    # Known extension → resolve immediately
+    if ext in EXTENSION_MAP:
+        file_type, file_format = EXTENSION_MAP[ext]
+        # Folder heuristic can override type if it disagrees
+        if folder_type:
+            file_type = folder_type
+        return SnifferResult(
+            file_type=file_type,
+            file_format=file_format,
+            confidence=0.9,
+        )
+
+    # Unrecognized extension
+    return SnifferResult(
+        file_type=folder_type or FileType.OTHER,
+        file_format=FileFormat.UNDETERMINED,
+        confidence=0.2,
+    )

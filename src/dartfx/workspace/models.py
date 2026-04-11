@@ -3,19 +3,12 @@ Pydantic models for dartfx-workspace.
 """
 
 from datetime import datetime
-from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
-class FileType(StrEnum):
-    DATA = "data"
-    METADATA = "metadata"
-    DOCUMENTATION = "documentation"
-    CODE = "code"
-    OTHER = "other"
+from dartfx.workspace.sniffers import FileFormat, FileType
 
 
 class FileResource(BaseModel):
@@ -31,6 +24,7 @@ class FileResource(BaseModel):
     updated_at: datetime = Field(description="File last modification timestamp")
     blake3_hash: str = Field(description="BLAKE3 hash string for file integrity and deduplication/rename tracking")
     type: FileType = Field(default=FileType.OTHER, description="Controlled vocabulary type of the file")
+    file_format: FileFormat = Field(default=FileFormat.UNDETERMINED, description="Specific detected file format")
 
 
 class FileTypeStats(BaseModel):

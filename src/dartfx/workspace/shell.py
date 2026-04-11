@@ -226,7 +226,9 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             file_uuid = "-"
         else:
             registered = "[green]✔[/green]" if kb_info else "[red]✘[/red]"
-            file_type = kb_info["type"] if kb_info else "-"
+            ft = kb_info["type"] if kb_info else "-"
+            ff = kb_info.get("file_format", "undetermined") if kb_info else ""
+            file_type = f"{ft}/{ff}" if ff and ff != "undetermined" else ft
             file_uuid = kb_info["uuid"] if kb_info else "-"
 
         suffix = "/" if is_dir else ""
@@ -330,7 +332,10 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                 kb_info = kb_files.get(rel_path)
 
                 if kb_info:
-                    label = f"[green]✔[/green] {path.name} [dim]({kb_info['type']})[/dim]"
+                    ft = kb_info["type"]
+                    ff = kb_info.get("file_format", "undetermined")
+                    type_label = f"{ft}/{ff}" if ff and ff != "undetermined" else ft
+                    label = f"[green]✔[/green] {path.name} [dim]({type_label})[/dim]"
                     if show_uuid:
                         label += f" [dim blue]<{kb_info['uuid']}>[/dim blue]"
                 else:
