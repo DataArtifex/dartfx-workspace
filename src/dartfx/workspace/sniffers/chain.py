@@ -40,21 +40,18 @@ def sniff_file(
     # Step 1: Extension classifier (zero I/O)
     result = classify_by_extension(file_path, workspace_path)
 
-    # Step 2 & 3: Content-based sniffers for ambiguous/undetermined files
-    if result is None or result.file_format == FileFormat.UNDETERMINED:
+    # Step 2 & 3: Content-based sniffers ONLY for explicitly ambiguous files
+    # (extension classifier returns None for .txt, .dat, extensionless).
+    # Unrecognized extensions return a result with UNDETERMINED — those stay as-is.
+    if result is None:
         # Try magic bytes first (fast — reads 64 bytes)
         magic_result = sniff_magic_bytes(file_path)
         if magic_result:
-            # Preserve folder-heuristic type if we had one
-            if result and result.file_type != FileType.OTHER:
-                magic_result.file_type = result.file_type
             result = magic_result
         else:
             # Try text heuristic (reads first 10KB)
             text_result = sniff_text_heuristic(file_path)
             if text_result:
-                if result and result.file_type != FileType.OTHER:
-                    text_result.file_type = result.file_type
                 result = text_result
 
     # If still nothing, provide a fallback

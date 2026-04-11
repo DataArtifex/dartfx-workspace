@@ -37,6 +37,11 @@ def sniff_text_heuristic(file_path: Path) -> SnifferResult | None:
     if not sample.strip():
         return None
 
+    # Guard: skip structured content that is NOT tabular data
+    stripped = sample.lstrip()
+    if _is_structured_content(stripped):
+        return None
+
     # Try clevercsv first for high-accuracy detection
     result = _sniff_with_clevercsv(sample)
     if result:
@@ -61,6 +66,10 @@ def _sniff_with_clevercsv(sample: str) -> SnifferResult | None:
 
         delimiter = dialect.delimiter
         quotechar = dialect.quotechar or '"'
+
+        # Reject space as delimiter — it's almost always prose, not data
+        if delimiter in (" ", ""):
+            return None
 
         # Determine format based on delimiter
         if delimiter == "\t":
@@ -111,3 +120,34 @@ def _sniff_basic(sample: str) -> SnifferResult | None:
             )
 
     return None
+
+
+# Prefixes that indicate structured (non-tabular) content
+_STRUCTURED_PREFIXES = (
+    "<?xml",  # XML declaration
+    "<!doctype",  # HTML/XML doctype
+    "<html",  # HTML
+    "<plist",  # Apple plist
+    "@prefix",  # Turtle RDF
+    "@base",  # Turtle RDF
+)
+
+
+def _is_structured_content(stripped: str) -> bool:
+    """Check if text content appears to be structured markup or serialized data."""
+    lower = stripped[:100].lower()
+
+    # XML / HTML / plist / RDF
+    for prefix in _STRUCTURED_PREFIXES:
+        if lower.startswith(prefix):
+            return True
+
+    # JSON object or array
+    if stripped[0] in ("{", "["):
+        return True
+
+    # YAML frontmatter
+    if stripped.startswith("---"):
+        return True
+
+    return False

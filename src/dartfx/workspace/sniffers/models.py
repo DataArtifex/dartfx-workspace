@@ -15,6 +15,8 @@ class FileType(StrEnum):
     METADATA = "metadata"
     DOCUMENTATION = "documentation"
     CODE = "code"
+    COMPRESSED = "compressed"
+    MEDIA = "media"
     OTHER = "other"
 
 
@@ -32,6 +34,7 @@ class FileFormat(StrEnum):
     SAV = "sav"
     XLSX = "xlsx"
     XLS = "xls"
+    SAS7BCAT = "sas7bcat"
 
     # Metadata formats
     TURTLE = "turtle"
@@ -60,6 +63,43 @@ class FileFormat(StrEnum):
     CPP = "cpp"
     RUST = "rust"
 
+    # Compressed / archive formats
+    ZIP = "zip"
+    SEVENZ = "7z"
+    RAR = "rar"
+    GZIP = "gzip"
+    BZIP2 = "bzip2"
+    XZ = "xz"
+    BROTLI = "brotli"
+    ZSTD = "zstd"
+    TAR = "tar"
+
+    # Media formats — images
+    PNG = "png"
+    JPEG = "jpeg"
+    GIF = "gif"
+    SVG = "svg"
+    WEBP = "webp"
+    TIFF = "tiff"
+    BMP = "bmp"
+    ICO = "ico"
+
+    # Media formats — video
+    MP4 = "mp4"
+    AVI = "avi"
+    MKV = "mkv"
+    MOV = "mov"
+    WEBM = "webm"
+    WMV = "wmv"
+
+    # Media formats — audio
+    MP3 = "mp3"
+    WAV = "wav"
+    FLAC = "flac"
+    OGG = "ogg"
+    AAC = "aac"
+    WMA = "wma"
+
     # Fallback
     UNDETERMINED = "undetermined"
 
@@ -73,6 +113,7 @@ MIME_TYPE_MAP: dict[FileFormat, str] = {
     FileFormat.SAS7BDAT: "application/x-sas-data",
     FileFormat.DTA: "application/x-stata-dta",
     FileFormat.SAV: "application/x-spss-sav",
+    FileFormat.SAS7BCAT: "application/x-sas-catalog",
     FileFormat.XLSX: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     FileFormat.XLS: "application/vnd.ms-excel",
     FileFormat.TURTLE: "text/turtle",
@@ -95,6 +136,35 @@ MIME_TYPE_MAP: dict[FileFormat, str] = {
     FileFormat.JAVA: "text/x-java",
     FileFormat.CPP: "text/x-c++src",
     FileFormat.RUST: "text/x-rustsrc",
+    FileFormat.ZIP: "application/zip",
+    FileFormat.SEVENZ: "application/x-7z-compressed",
+    FileFormat.RAR: "application/vnd.rar",
+    FileFormat.GZIP: "application/gzip",
+    FileFormat.BZIP2: "application/x-bzip2",
+    FileFormat.XZ: "application/x-xz",
+    FileFormat.BROTLI: "application/x-brotli",
+    FileFormat.ZSTD: "application/zstd",
+    FileFormat.TAR: "application/x-tar",
+    FileFormat.PNG: "image/png",
+    FileFormat.JPEG: "image/jpeg",
+    FileFormat.GIF: "image/gif",
+    FileFormat.SVG: "image/svg+xml",
+    FileFormat.WEBP: "image/webp",
+    FileFormat.TIFF: "image/tiff",
+    FileFormat.BMP: "image/bmp",
+    FileFormat.ICO: "image/x-icon",
+    FileFormat.MP4: "video/mp4",
+    FileFormat.AVI: "video/x-msvideo",
+    FileFormat.MKV: "video/x-matroska",
+    FileFormat.MOV: "video/quicktime",
+    FileFormat.WEBM: "video/webm",
+    FileFormat.WMV: "video/x-ms-wmv",
+    FileFormat.MP3: "audio/mpeg",
+    FileFormat.WAV: "audio/wav",
+    FileFormat.FLAC: "audio/flac",
+    FileFormat.OGG: "audio/ogg",
+    FileFormat.AAC: "audio/aac",
+    FileFormat.WMA: "audio/x-ms-wma",
 }
 
 
