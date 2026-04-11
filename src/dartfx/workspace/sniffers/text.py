@@ -65,7 +65,10 @@ def _sniff_with_clevercsv(sample: str) -> SnifferResult | None:
             return None
 
         delimiter = dialect.delimiter
-        quotechar = dialect.quotechar or '"'
+        quotechar = dialect.quotechar
+
+        if not delimiter:
+            return None
 
         # Reject space as delimiter — it's almost always prose, not data
         if delimiter in (" ", ""):

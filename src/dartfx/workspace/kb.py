@@ -226,3 +226,15 @@ class KnowledgeBase:
                 }
             )
         return results
+
+    def wipe(self):
+        """Wipes the entire knowledge base by deleting all resource files and clearing the graph."""
+        import shutil
+
+        if self.resource_dir.exists():
+            shutil.rmtree(self.resource_dir)
+        self.resource_dir.mkdir(parents=True, exist_ok=True)
+        self.graph = Graph()
+        self.graph.bind("dcterms", DCTERMS)
+        self.graph.bind("schema", SCHEMA)
+        self.graph.bind("dartfx", DARTFX)

@@ -109,10 +109,15 @@ def _enrich_delimited(file_path: Path, result: SnifferResult) -> None:
             sample = f.read(10_000)
 
         dialect = clevercsv.Sniffer().sniff(sample, verbose=False)
-        if dialect:
-            result.attributes["textDelimiter"] = dialect.delimiter
-            if dialect.quotechar:
-                result.attributes["textQuote"] = dialect.quotechar
+        if dialect and dialect.delimiter:
+            delimiter = dialect.delimiter
+            quotechar = dialect.quotechar
+
+            if not delimiter:
+                return
+            result.attributes["textDelimiter"] = delimiter
+            if quotechar:
+                result.attributes["textQuote"] = quotechar
     except Exception:
         logger.debug(f"clevercsv enrichment failed for {file_path}", exc_info=True)
 

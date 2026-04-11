@@ -81,10 +81,18 @@ def handle_init(ctx: ShellContext, args: list[str]):
         typer.echo("Created standard directories.")
 
 
-def handle_scan(ctx: ShellContext, _args: list[str]):
+def handle_scan(ctx: ShellContext, args: list[str]):
     if not ctx.workspace.is_initialized():
         console.print("[red]Workspace not initialized.[/red]")
         return
+
+    # Check for --clean
+    if "--clean" in args:
+        if typer.confirm("Wipe existing metadata and start a fresh scan?"):
+            ctx.workspace.kb.wipe()
+            console.print("[yellow]Knowledge Base wiped.[/yellow]")
+        else:
+            return
 
     with Progress(
         SpinnerColumn(),
@@ -469,7 +477,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
 
     help_text = [
         ("init", "Initialize the workspace (use --dirs for standard structure)"),
-        ("scan", "Scan workspace and sync to Knowledge Base"),
+        ("scan", "Scan workspace and sync to KB (--clean for fresh scan)"),
         ("stats", "Show workspace statistics"),
         ("cd", "Change directory"),
         ("ls", "List directory contents (-a, --uuid, or glob)"),
