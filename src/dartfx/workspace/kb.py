@@ -9,7 +9,7 @@ from uuid import UUID
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF, XSD
 
-DARTFX = Namespace("http://dartfx.org/workspace/")
+DARTFX = Namespace("https://dataartifex.org/workspace/")
 SCHEMA = Namespace("https://schema.org/")
 
 
@@ -110,16 +110,18 @@ class KnowledgeBase:
         Returns a list of dicts with uuid, path, hash etc.
         """
         q = """
+        PREFIX dartfx: <https://dataartifex.org/workspace/>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
         SELECT ?uri ?id ?path ?size ?hash ?type ?created ?modified
         WHERE {
-            ?uri a <http://dartfx.org/workspace/FileResource> ;
-                 <http://purl.org/dc/terms/identifier> ?id ;
-                 <http://dartfx.org/workspace/path> ?path ;
-                 <http://dartfx.org/workspace/sizeBytes> ?size ;
-                 <http://dartfx.org/workspace/blake3Hash> ?hash ;
-                 <http://dartfx.org/workspace/filetype> ?type ;
-                 <http://purl.org/dc/terms/created> ?created ;
-                 <http://purl.org/dc/terms/modified> ?modified .
+            ?uri a dartfx:FileResource ;
+                 dcterms:identifier ?id ;
+                 dartfx:path ?path ;
+                 dartfx:sizeBytes ?size ;
+                 dartfx:blake3Hash ?hash ;
+                 dartfx:filetype ?type ;
+                 dcterms:created ?created ;
+                 dcterms:modified ?modified .
         }
         """
         results = []
