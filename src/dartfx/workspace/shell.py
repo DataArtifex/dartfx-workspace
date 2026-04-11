@@ -16,6 +16,7 @@ from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import InMemoryHistory
 from rich.console import Console
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 from rich.tree import Tree
 
@@ -84,8 +85,19 @@ def handle_scan(ctx: ShellContext, _args: list[str]):
     if not ctx.workspace.is_initialized():
         console.print("[red]Workspace not initialized.[/red]")
         return
-    console.print("Scanning workspace...")
-    ctx.workspace.scan()
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        transient=True,
+    ) as progress:
+        task = progress.add_task("Scanning workspace...", total=None)
+
+        def update_progress(path: str):
+            progress.update(task, description=f"Scanning [cyan]{path}[/cyan]")
+
+        ctx.workspace.scanner.scan(status_callback=update_progress)
+
     console.print("[green]Scan complete.[/green]")
 
 
@@ -99,22 +111,22 @@ def handle_stats(ctx: ShellContext, _args: list[str]):
     table = Table(title="File Type Breakdown", box=None, show_header=True, header_style="bold magenta")
     table.add_column("Type", style="cyan")
     table.add_column("Count", justify="right", style="green")
-    table.add_column("Total Size (bytes)", justify="right", style="blue")
+    table.add_column("Size", justify="right", style="blue")
 
     for file_type, info in stats.types_info.items():
         if info.count > 0:
-            table.add_row(file_type.value, str(info.count), str(info.size_bytes))
+            table.add_row(file_type.value, str(info.count), format_size(info.size_bytes))
 
     # Summary Table
     summary = Table(title="Registration Summary", box=None, show_header=True, header_style="bold yellow")
     summary.add_column("Status", style="bold")
     summary.add_column("Count", justify="right")
-    summary.add_column("Total Size (bytes)", justify="right")
+    summary.add_column("Size", justify="right")
 
-    summary.add_row("Registered", str(stats.registered_count), str(stats.registered_size_bytes))
-    summary.add_row("Unregistered", str(stats.unregistered_count), str(stats.unregistered_size_bytes))
+    summary.add_row("Registered", str(stats.registered_count), format_size(stats.registered_size_bytes))
+    summary.add_row("Unregistered", str(stats.unregistered_count), format_size(stats.unregistered_size_bytes))
     summary.add_section()
-    summary.add_row("Total", str(stats.total_files), str(stats.total_size_bytes), style="bold white")
+    summary.add_row("Total", str(stats.total_files), format_size(stats.total_size_bytes), style="bold white")
 
     console.print(Panel(table, expand=False, border_style="green"))
     console.print(Panel(summary, expand=False, border_style="yellow"))

@@ -3,6 +3,7 @@ Workspace scanning and file profiling using BLAKE3 hashes.
 """
 
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
@@ -60,7 +61,7 @@ class Scanner:
 
         return FileType.OTHER
 
-    def scan(self):
+    def scan(self, status_callback: Callable[[str], None] | None = None):
         """Scans the workspace and synchronizes with the Knowledge Base."""
         existing_files = self.kb.get_all_files()
         existing_path_map = {f["path"]: f for f in existing_files}
@@ -79,6 +80,9 @@ class Scanner:
 
             rel_path_str = p.relative_to(self.workspace_path).as_posix()
             current_paths.add(rel_path_str)
+
+            if status_callback:
+                status_callback(rel_path_str)
 
             try:
                 stat = p.stat()
