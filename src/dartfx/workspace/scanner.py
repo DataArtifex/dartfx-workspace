@@ -133,3 +133,93 @@ class Scanner:
                 self.kb.remove_file_resource(uuid.UUID(f["uuid"]))
 
         self.kb.save()
+
+    def scan_path(self, path: Path):
+        """Perform targeted profiling and indexing for a single path (file or directory)."""
+        if not path.exists():
+            return
+
+        if path.is_file():
+            self._scan_single_file(path)
+        else:
+            for p in path.rglob("*"):
+                if p.is_file():
+                    self._scan_single_file(p)
+
+    def _scan_single_file(self, p: Path):
+        """Helper to scan just one file and update KB."""
+        rel_parts = p.relative_to(self.workspace_path).parts
+        if any(part.startswith(".") or part in self.ignore_dirs for part in rel_parts):
+            return
+
+        rel_path_str = p.relative_to(self.workspace_path).as_posix()
+        try:
+            stat = p.stat()
+            size = stat.st_size
+            created = datetime.fromtimestamp(stat.st_ctime)
+            updated = datetime.fromtimestamp(stat.st_mtime)
+            b3hash = self.compute_blake3(p)
+        except Exception as e:
+            print(f"Skipping targeted scan of {p}: {e}")
+            return
+
+        file_type = self.get_file_type(p).value
+        existing_info = self.kb.get_file_by_path(rel_path_str)
+
+        if existing_info:
+            if existing_info["blake3_hash"] != b3hash or existing_info["size_bytes"] != size:
+                self.kb.upsert_file_resource(
+                    uuid.UUID(existing_info["uuid"]),
+                    p.relative_to(self.workspace_path),
+                    size,
+                    b3hash,
+                    file_type,
+                    created,
+                    updated,
+                )
+        else:
+            # We assume a completely new UUID for this targeted drop.
+            self.kb.upsert_file_resource(
+                uuid.uuid4(), p.relative_to(self.workspace_path), size, b3hash, file_type, created, updated
+            )
+
+    def handle_move(self, src: Path, actual_dst: Path):
+        """Optimized targeted metadata update for moved/renamed files or directories."""
+        src_rel = src.relative_to(self.workspace_path).as_posix()
+        dst_rel = actual_dst.relative_to(self.workspace_path).as_posix()
+
+        # We query the entire list instead of multiple get_file_by_path if moving a directory root
+        all_files = self.kb.get_all_files()
+        for f in all_files:
+            f_path = f["path"]
+            if f_path == src_rel or f_path.startswith(src_rel + "/"):
+                new_rel = f_path.replace(src_rel, dst_rel, 1)
+                new_path_obj = self.workspace_path / Path(new_rel)
+
+                file_type = self.get_file_type(new_path_obj).value
+                try:
+                    stat = new_path_obj.stat()
+                    created = datetime.fromtimestamp(stat.st_ctime)
+                    updated = datetime.fromtimestamp(stat.st_mtime)
+                except OSError:
+                    continue
+
+                self.kb.upsert_file_resource(
+                    uuid.UUID(f["uuid"]),
+                    new_path_obj.relative_to(self.workspace_path),
+                    f["size_bytes"],
+                    f["blake3_hash"],
+                    file_type,
+                    created,
+                    updated,
+                )
+
+    def handle_remove(self, target: Path):
+        """Targeted removal of file or directory records from KB."""
+        target_rel = target.relative_to(self.workspace_path).as_posix()
+        all_files = self.kb.get_all_files()
+
+        for f in all_files:
+            f_path = f["path"]
+            if f_path == target_rel or f_path.startswith(target_rel + "/"):
+                self.kb.remove_file_resource(uuid.UUID(f["uuid"]))

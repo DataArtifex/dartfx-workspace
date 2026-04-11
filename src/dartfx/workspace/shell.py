@@ -428,11 +428,17 @@ def handle_mv(ctx: ShellContext, args: list[str]):
         return
     src = ctx.resolve(args[0])
     dst = ctx.resolve(args[1])
+
+    if dst.is_dir():
+        actual_dst = dst / src.name
+    else:
+        actual_dst = dst
+
     try:
         shutil.move(str(src), str(dst))
-        # If workspace is initialized, track move
+        # If workspace is initialized, track targeted move
         if ctx.workspace.is_initialized():
-            ctx.workspace.scan()
+            ctx.workspace.scanner.handle_move(src, actual_dst)
     except Exception as e:
         typer.secho(f"mv error: {e}", fg=typer.colors.RED)
 
@@ -443,13 +449,19 @@ def handle_cp(ctx: ShellContext, args: list[str]):
         return
     src = ctx.resolve(args[0])
     dst = ctx.resolve(args[1])
+
+    if dst.is_dir():
+        actual_dst = dst / src.name
+    else:
+        actual_dst = dst
+
     try:
         if src.is_dir():
             shutil.copytree(src, dst)
         else:
             shutil.copy2(src, dst)
         if ctx.workspace.is_initialized():
-            ctx.workspace.scan()
+            ctx.workspace.scanner.scan_path(actual_dst)
     except Exception as e:
         typer.secho(f"cp error: {e}", fg=typer.colors.RED)
 
@@ -466,10 +478,10 @@ def handle_rm(ctx: ShellContext, args: list[str]):
                 shutil.rmtree(p)
             else:
                 p.unlink()
+            if ctx.workspace.is_initialized():
+                ctx.workspace.scanner.handle_remove(p)
         except Exception as e:
             typer.secho(f"rm error: {e}", fg=typer.colors.RED)
-    if ctx.workspace.is_initialized():
-        ctx.workspace.scan()
 
 
 def handle_clear(_ctx: ShellContext, _args: list[str]):

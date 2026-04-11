@@ -143,6 +143,36 @@ class KnowledgeBase:
         if old_path_str:
             self._cleanup_old_resource(old_path_str)
 
+    def get_file_by_path(self, path_str: str) -> dict | None:
+        """Looks up a file resource efficiently using its path."""
+        q = """
+        PREFIX dartfx: <https://dataartifex.org/workspace/>
+        PREFIX dcterms: <http://purl.org/dc/terms/>
+        SELECT ?uri ?id ?size ?hash ?type ?created ?modified
+        WHERE {
+            ?uri a dartfx:FileResource ;
+                 dcterms:identifier ?id ;
+                 dartfx:path ?path ;
+                 dartfx:sizeBytes ?size ;
+                 dartfx:blake3Hash ?hash ;
+                 dartfx:filetype ?type ;
+                 dcterms:created ?created ;
+                 dcterms:modified ?modified .
+        }
+        """
+        for row in self.graph.query(q, initBindings={"path": Literal(path_str)}):
+            r: Any = row
+            return {
+                "uuid": str(r.id),
+                "path": path_str,
+                "size_bytes": int(r.size),
+                "blake3_hash": str(r.hash),
+                "type": str(r.type),
+                "created_at": str(r.created),
+                "updated_at": str(r.modified),
+            }
+        return None
+
     def get_all_files(self) -> list[dict]:
         """
         Extract files currently tracked in the KB.
