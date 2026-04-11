@@ -143,7 +143,7 @@ The Knowledge Base uses the primary namespace `https://dataartifex.org/workspace
 Tools are expected to produce knowledge in RDF, typically as turtle files, that can be loaded onto triple stores. For modularity and performance, file resource metadata is stored in individual turtle files named after the resource's UUID.
 
 This knowledge base lives in a dedicated directory (e.g. `.dartfx/kb`), with dedicated sub-folders for file metadata and triple-store storage, such as:
-- `turtle/files`: Individual turtle files for each registered resource (e.g., `<uuid>.ttl`).
+- `workspace`: Physically mirrors the user's workspace hierarchy. For each file, a directory with the file's name contains a `resources.ttl` file mapping its metadata.
 - `oxigraph`: Embedded triple store for query performance.
 - `qlever`: High-performance SPARQL engine integration.
 
@@ -171,6 +171,6 @@ We should be able to start the:
 - Each file resource is described using a combination of **Dublin Core** (`dcterms`) and **Schema.org** (`schema:`) standards.
 - File resources are mapped to `schema:MediaObject` for broad interoperability.
 - Resources hold metadata such as size, create/update dates, BLAKE3 hash, file type, and a stable UUID.
-- Each file has a corresponding RDF description (turtle file) stored in the `.dartfx/kb/turtle/files/` directory.
+- Each file has a corresponding RDF description (`resources.ttl`) stored in the `.dartfx/kb/workspace/` mirroring directory.
 - Registration status is indicated in the shell using visual cues: **✔** (Registered) and **✘** (Unregistered).
-- Resource files are named using their stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325.ttl`) to ensure persistence across renames.
+- A stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325`) ensures tracking persistence across file renames or moves.
