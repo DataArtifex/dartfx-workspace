@@ -57,6 +57,7 @@ class FileFormat(StrEnum):
     SAS_SYNTAX = "sas-syntax"
     STATA_SYNTAX = "stata-syntax"
     SPSS_SYNTAX = "spss-syntax"
+    SQL = "sql"
     SHELL = "shell"
     JAVASCRIPT = "javascript"
     JAVA = "java"
@@ -131,6 +132,7 @@ MIME_TYPE_MAP: dict[FileFormat, str] = {
     FileFormat.SAS_SYNTAX: "text/x-sas",
     FileFormat.STATA_SYNTAX: "text/x-stata",
     FileFormat.SPSS_SYNTAX: "text/x-spss",
+    FileFormat.SQL: "text/x-sql",
     FileFormat.SHELL: "text/x-shellscript",
     FileFormat.JAVASCRIPT: "text/javascript",
     FileFormat.JAVA: "text/x-java",

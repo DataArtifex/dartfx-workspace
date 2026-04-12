@@ -43,6 +43,7 @@ EXTENSION_MAP: dict[str, tuple[FileType, FileFormat]] = {
     ".sas": (FileType.CODE, FileFormat.SAS_SYNTAX),
     ".do": (FileType.CODE, FileFormat.STATA_SYNTAX),
     ".sps": (FileType.CODE, FileFormat.SPSS_SYNTAX),
+    ".sql": (FileType.CODE, FileFormat.SQL),
     ".sh": (FileType.CODE, FileFormat.SHELL),
     ".bat": (FileType.CODE, FileFormat.SHELL),
     ".cmd": (FileType.CODE, FileFormat.SHELL),
@@ -97,57 +98,25 @@ EXTENSION_MAP: dict[str, tuple[FileType, FileFormat]] = {
 # Ambiguous extensions that need content-based sniffing
 AMBIGUOUS_EXTENSIONS: set[str] = {".txt", ".dat"}
 
-# Folder name → FileType boost
-FOLDER_TYPE_MAP: dict[str, FileType] = {
-    "data": FileType.DATA,
-    "meta": FileType.METADATA,
-    "metadata": FileType.METADATA,
-    "docs": FileType.DOCUMENTATION,
-    "documentation": FileType.DOCUMENTATION,
-    "code": FileType.CODE,
-}
-
 
 def classify_by_extension(
     file_path: Path,
-    workspace_path: Path | None = None,
 ) -> SnifferResult | None:
-    """Classify a file by its extension and optional folder heuristic.
+    """Classify a file by its extension.
 
     Returns None if the extension is ambiguous or unrecognized, signaling
     that content-based sniffers should take over for classification.
-    Returns a SnifferResult (possibly with needs_enrichment implied by format)
-    if the extension is unambiguous.
+    Returns a SnifferResult if the extension is unambiguous.
     """
     ext = file_path.suffix.lower()
 
-    # Check folder heuristic for type boost
-    folder_type: FileType | None = None
-    if workspace_path:
-        try:
-            rel_parts = file_path.relative_to(workspace_path).parts
-            if len(rel_parts) > 1:
-                top_dir = rel_parts[0].lower()
-                folder_type = FOLDER_TYPE_MAP.get(top_dir)
-        except ValueError:
-            pass
-
     # Ambiguous extensions → signal content sniffing needed
     if ext in AMBIGUOUS_EXTENSIONS or ext == "":
-        if folder_type:
-            return SnifferResult(
-                file_type=folder_type,
-                file_format=FileFormat.UNDETERMINED,
-                confidence=0.3,
-            )
         return None
 
     # Known extension → resolve immediately
     if ext in EXTENSION_MAP:
         file_type, file_format = EXTENSION_MAP[ext]
-        # Folder heuristic can override type if it disagrees
-        if folder_type:
-            file_type = folder_type
         return SnifferResult(
             file_type=file_type,
             file_format=file_format,
@@ -156,7 +125,7 @@ def classify_by_extension(
 
     # Unrecognized extension
     return SnifferResult(
-        file_type=folder_type or FileType.OTHER,
+        file_type=FileType.OTHER,
         file_format=FileFormat.UNDETERMINED,
         confidence=0.2,
     )

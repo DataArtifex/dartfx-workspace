@@ -22,7 +22,6 @@ from dartfx.workspace.sniffers.text import sniff_text_heuristic
 
 def sniff_file(
     file_path: Path,
-    workspace_path: Path | None = None,
 ) -> SnifferResult:
     """Run the full sniffer pipeline on a file.
 
@@ -30,7 +29,6 @@ def sniff_file(
 
     Args:
         file_path: Absolute path to the file to sniff.
-        workspace_path: Optional workspace root for folder heuristics.
 
     Returns:
         A SnifferResult with type, format, MIME type, and attributes.
@@ -38,7 +36,7 @@ def sniff_file(
     # ── Phase A: Classification ──
 
     # Step 1: Extension classifier (zero I/O)
-    result = classify_by_extension(file_path, workspace_path)
+    result = classify_by_extension(file_path)
 
     # Step 2 & 3: Content-based sniffers ONLY for explicitly ambiguous files
     # (extension classifier returns None for .txt, .dat, extensionless).

@@ -33,7 +33,7 @@ class Scanner:
 
     def _sniff(self, file_path: Path) -> tuple[str, str, str | None, dict[str, str]]:
         """Run the sniffer pipeline and return (type, format, mime, attributes)."""
-        result = sniff_file(file_path, self.workspace_path)
+        result = sniff_file(file_path)
         return (
             result.file_type.value,
             result.file_format.value,

@@ -69,10 +69,10 @@ class TestExtensionClassifier:
         data_dir.mkdir(parents=True)
         f = data_dir / "report.pdf"
         f.write_bytes(b"%PDF-1.4 dummy")
-        result = classify_by_extension(f, workspace_path=ws)
+        result = classify_by_extension(f)
         assert result is not None
-        # Folder heuristic overrides extension-based type
-        assert result.file_type == FileType.DATA
+        # DOCUMENTATION extension (.pdf) should maintain identity even in /data/ folder
+        assert result.file_type == FileType.DOCUMENTATION
         assert result.file_format == FileFormat.PDF
 
     def test_unknown_extension_returns_other(self, tmp_path: Path):
@@ -167,7 +167,7 @@ class TestSniffFileChain:
     def test_csv_file(self, tmp_path: Path):
         f = tmp_path / "data.csv"
         f.write_text("a,b,c\n1,2,3\n4,5,6\n")
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert result.file_type == FileType.DATA
         assert result.file_format == FileFormat.CSV
         assert result.mime_type == "text/csv"
@@ -175,7 +175,7 @@ class TestSniffFileChain:
     def test_pdf_file(self, tmp_path: Path):
         f = tmp_path / "doc.pdf"
         f.write_bytes(b"%PDF-1.4 dummy")
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert result.file_type == FileType.DOCUMENTATION
         assert result.file_format == FileFormat.PDF
         assert result.mime_type == "application/pdf"
@@ -183,7 +183,7 @@ class TestSniffFileChain:
     def test_txt_tabular_reclassified(self, tmp_path: Path):
         f = tmp_path / "data.txt"
         f.write_text("x,y,z\n1,2,3\n4,5,6\n7,8,9\n")
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert result.file_type == FileType.DATA
         assert result.file_format in (FileFormat.CSV, FileFormat.TSV)
 
@@ -194,24 +194,24 @@ class TestSniffFileChain:
             "It explains how to use the software.\n"
             "There is no tabular data here.\n"
         )
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         # Should either remain DOCUMENTATION or OTHER — not DATA
         assert result.file_type != FileType.DATA
 
     def test_unknown_extension_with_parquet_content(self, tmp_path: Path):
         f = tmp_path / "mystery.dat"
         f.write_bytes(b"PAR1" + b"\x00" * 100)
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert result.file_format == FileFormat.PARQUET
 
     def test_display_label(self, tmp_path: Path):
         f = tmp_path / "data.csv"
         f.write_text("a,b\n1,2\n")
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert result.display_label() == "data/csv"
 
     def test_undetermined_display_label(self, tmp_path: Path):
         f = tmp_path / "mystery.xyz"
         f.write_text("???")
-        result = sniff_file(f, tmp_path)
+        result = sniff_file(f)
         assert "/" not in result.display_label() or "undetermined" not in result.display_label()
