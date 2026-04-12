@@ -195,8 +195,13 @@ class Scanner:
         for f in all_files:
             f_path = f["path"]
             if f_path == src_rel or f_path.startswith(src_rel + "/"):
-                new_rel = f_path.replace(src_rel, dst_rel, 1)
-                new_path_obj = self.workspace_path / Path(new_rel)
+                try:
+                    rel_to_src = Path(f_path).relative_to(src_rel)
+                    new_rel = (Path(dst_rel) / rel_to_src).as_posix()
+                except ValueError:
+                    continue
+
+                new_path_obj = self.workspace_path / new_rel
 
                 file_type, file_format, mime_type, attributes = self._sniff(new_path_obj)
                 try:
@@ -219,6 +224,9 @@ class Scanner:
                     attributes=attributes,
                 )
 
+        # Crucial: Save the graph after mass-moving resources
+        self.kb.save()
+
     def handle_remove(self, target: Path):
         """Targeted removal of file or directory records from KB."""
         target_rel = target.relative_to(self.workspace_path).as_posix()
@@ -228,3 +236,6 @@ class Scanner:
             f_path = f["path"]
             if f_path == target_rel or f_path.startswith(target_rel + "/"):
                 self.kb.remove_file_resource(uuid.UUID(f["uuid"]))
+
+        # Crucial: Save the graph after mass-removing resources
+        self.kb.save()
