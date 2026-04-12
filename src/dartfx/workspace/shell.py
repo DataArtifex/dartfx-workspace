@@ -4,6 +4,7 @@ Interactive bash-like shell for dartfx-workspace.
 
 import fnmatch
 import os
+import re
 import shlex
 import shutil
 import stat
@@ -14,13 +15,17 @@ import typer
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import WordCompleter
 from prompt_toolkit.history import InMemoryHistory
+from rich.columns import Columns
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
+from rich.text import Text
 from rich.tree import Tree
 
+from dartfx.workspace.__about__ import __version__
 from dartfx.workspace.core import Workspace
+from dartfx.workspace.utils import format_size
 
 console = Console()
 
@@ -153,30 +158,34 @@ def handle_cd(ctx: ShellContext, args: list[str]):
         typer.secho(f"cd: no such file or directory: {target}", fg=typer.colors.RED)
 
 
-def format_size(size_bytes: int) -> str:
-    """Formats bytes into human-friendly units."""
-    if size_bytes < 1024:
-        return f"{size_bytes}B"
-    size: float = float(size_bytes)
-    for unit in ["K", "M", "G", "T", "P"]:
-        size /= 1024
-        if size < 1024:
-            return f"{size:.1f}{unit}"
-    return f"{size:.1f}E"
+def _get_type_label(kb_info: dict | None) -> str:
+    """Extracts a type/format label from KB info."""
+    if not kb_info:
+        return "-"
+    ft = kb_info.get("type", "-")
+    ff = kb_info.get("file_format", "undetermined")
+    return f"{ft}/{ff}" if ff and ff != "undetermined" else ft
 
 
 def handle_ls(ctx: ShellContext, args: list[str]):
     show_all = False
     show_uuid = False
-    human_readable = True
+    type_filter = None
     new_args = []
-    for arg in args:
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
         if arg in ("-a", "--all"):
             show_all = True
         elif arg == "--uuid":
             show_uuid = True
+        elif arg in ("-t", "--type") and i + 1 < len(args):
+            type_filter = args[i + 1]
+            i += 1
         else:
             new_args.append(arg)
+        i += 1
 
     target_str = new_args[0] if new_args else "."
 
@@ -220,7 +229,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         st = item.stat()
         mode = stat.filemode(st.st_mode)
         size_val = st.st_size
-        size_str = format_size(size_val) if human_readable else str(size_val)
+        size_str = format_size(size_val)
         mtime = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M")
 
         if is_dir:
@@ -229,9 +238,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             file_uuid = "-"
         else:
             registered = "[green]✔[/green]" if kb_info else "[red]✘[/red]"
-            ft = kb_info["type"] if kb_info else "-"
-            ff = kb_info.get("file_format", "undetermined") if kb_info else ""
-            file_type = f"{ft}/{ff}" if ff and ff != "undetermined" else ft
+            file_type = _get_type_label(kb_info)
             file_uuid = kb_info["uuid"] if kb_info else "-"
 
         suffix = "/" if is_dir else ""
@@ -247,10 +254,18 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         table.add_column("UUID", style="dim")
     table.add_column("Name", style="bold white")
 
+    type_regex = re.compile(type_filter, re.I) if type_filter else None
+
     for item in sorted(items):
         if not show_all and item.name.startswith("."):
             continue
         info = list(_get_item_info(item))
+
+        if type_regex:
+            # Type is at index 4 in info list
+            if not type_regex.search(info[4]):
+                continue
+
         if not show_uuid:
             info.pop(5)
         table.add_row(*info)
@@ -262,28 +277,32 @@ def handle_tree(ctx: ShellContext, args: list[str]):
     target_str = "."
     show_uuid = False
     max_level = None
+    type_filter = None
 
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--uuid":
-            show_uuid = True
-        elif arg in ("-L", "--level") and i + 1 < len(args):
+        if arg in ("-L", "--level") and i + 1 < len(args):
             try:
                 max_level = int(args[i + 1])
                 i += 1
             except ValueError:
                 pass
+        elif arg == "--uuid":
+            show_uuid = True
+        elif arg in ("-t", "--type") and i + 1 < len(args):
+            type_filter = args[i + 1]
+            i += 1
         elif not arg.startswith("-"):
             target_str = arg
         i += 1
 
     target = ctx.resolve(target_str)
-
-    if not target.exists() or not target.is_dir():
-        console.print(f"[red]tree: '{target_str}' is not a directory or does not exist[/red]")
+    if not target.exists():
+        console.print(f"[red]tree: '{target_str}': No such file or directory[/red]")
         return
 
+    # Prepare Knowledge Base data
     kb_files = {}
     if ctx.workspace.is_initialized():
         try:
@@ -291,9 +310,10 @@ def handle_tree(ctx: ShellContext, args: list[str]):
         except Exception:
             pass
 
-    tree = Tree(f"[bold blue]{target.name}/[/bold blue]")
+    tree = Tree(f"[bold blue]{target.name}/[/bold blue]" if target.is_dir() else target.name)
+    type_regex = re.compile(type_filter, re.I) if type_filter else None
 
-    def add_to_tree(directory: Path, tree_node: Tree, current_level: int):
+    def add_to_tree(directory: Path, tree_node, current_level: int):
         if max_level is not None and current_level >= max_level:
             return
 
@@ -307,11 +327,13 @@ def handle_tree(ctx: ShellContext, args: list[str]):
             else:
                 rel_path = path.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
                 kb_info = kb_files.get(rel_path)
+                type_label = _get_type_label(kb_info)
+
+                # Apply type filter (only for files)
+                if type_regex and not type_regex.search(type_label):
+                    continue
 
                 if kb_info:
-                    ft = kb_info["type"]
-                    ff = kb_info.get("file_format", "undetermined")
-                    type_label = f"{ft}/{ff}" if ff and ff != "undetermined" else ft
                     label = f"[green]✔[/green] {path.name} [dim]({type_label})[/dim]"
                     if show_uuid:
                         label += f" [dim blue]<{kb_info['uuid']}>[/dim blue]"
@@ -320,7 +342,8 @@ def handle_tree(ctx: ShellContext, args: list[str]):
 
                 tree_node.add(label)
 
-    add_to_tree(target, tree, 0)
+    if target.is_dir():
+        add_to_tree(target, tree, 0)
     console.print(tree)
 
 
@@ -480,8 +503,8 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("scan", "Scan workspace and sync to KB (--clean for fresh scan)"),
         ("stats", "Show workspace statistics"),
         ("cd", "Change directory"),
-        ("ls", "List directory contents (-a, --uuid, or glob)"),
-        ("tree", "Display tree structure (-L level, --uuid)"),
+        ("ls", "List directory contents (-a, -t pattern, --uuid, or glob)"),
+        ("tree", "Display tree structure (-L level, -t pattern, --uuid)"),
         ("head", "Show first lines of a file (-n number)"),
         ("tail", "Show last lines of a file (-n number)"),
         ("pwd", "Print working directory"),
@@ -498,6 +521,41 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         table.add_row(cmd, desc)
 
     console.print(table)
+
+
+def display_welcome_banner(ctx: ShellContext):
+    """Displays a cool welcome banner for the shell."""
+    logo = r"""
+    ____             __  ____
+   / __ \____ ______/ /_/ __/  __
+  / / / / __ `/ ___/ __/ /_| |/_/
+ / /_/ / /_/ / /  / /_/ __/>  <
+/_____/\__,_/_/   \__/_/ /_/|_|
+    """
+
+    logo_text = Text(logo, style="bold cyan")
+    workspace_label = Text(" ⚡ W O R K S P A C E", style="bold white tracking=2")
+
+    brand_group = Table.grid()
+    brand_group.add_row(logo_text)
+    brand_group.add_row(workspace_label)
+
+    info_table = Table.grid(padding=(0, 2))
+    info_table.add_row("[bold white]Version:[/bold white]", f"[green]{__version__}[/green]")
+    info_table.add_row("[bold white]Workspace:[/bold white]", f"[blue]{ctx.workspace.path}[/blue]")
+    info_table.add_row(
+        "[bold white]Status:[/bold white]",
+        "[green]Active[/green]" if ctx.workspace.is_initialized() else "[yellow]Uninitialized[/yellow]",
+    )
+
+    panel = Panel(
+        Columns([brand_group, info_table], padding=(1, 4)),
+        subtitle="[dim]Type 'help' for commands • 'exit' to quit[/dim]",
+        border_style="bright_blue",
+        title="[bold white]Data Artifex[/bold white]",
+        title_align="left",
+    )
+    console.print(panel)
 
 
 COMMAND_HANDLERS = {
@@ -529,9 +587,7 @@ def interact(path: str = typer.Argument(".", help="Workspace root directory")):
     completer = WordCompleter(COMMANDS, ignore_case=True)
     session: PromptSession = PromptSession(history=InMemoryHistory())
 
-    console.print(
-        Panel("[bold green]Dartfx Workspace Shell[/bold green]", subtitle="Type 'exit' or press Ctrl-C to quit")
-    )
+    display_welcome_banner(ctx)
 
     while True:
         try:
