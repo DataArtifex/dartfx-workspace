@@ -40,7 +40,10 @@ def enrich_attributes(file_path: Path, result: SnifferResult) -> SnifferResult:
     if result.file_format not in ENRICHABLE_FORMATS:
         return result
 
-    if result.file_format in (FileFormat.SAS7BDAT, FileFormat.SAV, FileFormat.DTA):
+    if result.file_format == FileFormat.SAV:
+        _enrich_spss_header(file_path, result)
+        _enrich_proprietary(file_path, result)
+    elif result.file_format in (FileFormat.SAS7BDAT, FileFormat.DTA):
         _enrich_proprietary(file_path, result)
     elif result.file_format in (FileFormat.CSV, FileFormat.TSV):
         _enrich_delimited(file_path, result)
@@ -86,7 +89,9 @@ def _enrich_proprietary(file_path: Path, result: SnifferResult) -> None:
         if hasattr(meta, "number_rows") and meta.number_rows is not None:
             result.attributes["rowCount"] = str(meta.number_rows)
         if hasattr(meta, "file_format_version") and meta.file_format_version:
-            result.attributes["fileFormatVersion"] = str(meta.file_format_version)
+            # Don't overwrite if already set by a more specific sniffer (like SPSS header)
+            if "fileFormatVersion" not in result.attributes:
+                result.attributes["fileFormatVersion"] = str(meta.file_format_version)
 
     except Exception:
         logger.debug(f"pyreadstat enrichment failed for {file_path}", exc_info=True)
@@ -120,6 +125,31 @@ def _enrich_delimited(file_path: Path, result: SnifferResult) -> None:
                 result.attributes["textQuote"] = quotechar
     except Exception:
         logger.debug(f"clevercsv enrichment failed for {file_path}", exc_info=True)
+
+
+def _enrich_spss_header(file_path: Path, result: SnifferResult) -> None:
+    """Extract version and product name from SPSS .sav file header using dartfx-utils."""
+    try:
+        import re
+
+        from dartfx.utils.spss import SPSSFile
+
+        spss = SPSSFile(file_path)
+        header = spss.read_header_information()
+
+        if header.product_name:
+            # e.g. "@(#) SPSS DATA FILE MS Windows 29.0.0" or "IBM SPSS STATISTICS 28.0"
+            result.attributes["productName"] = header.product_name
+            # Extract version using regex
+            match = re.search(r"(\d+(\.\d+)+)", header.product_name)
+            if match:
+                result.attributes["fileFormatVersion"] = match.group(1)
+
+        if header.creation_date:
+            result.attributes["fileCreationDate"] = f"{header.creation_date} {header.creation_time}".strip()
+
+    except Exception as e:
+        logger.debug(f"dartfx-utils SPSS enrichment failed for {file_path}: {e}")
 
 
 def _enrich_json(file_path: Path, result: SnifferResult) -> None:

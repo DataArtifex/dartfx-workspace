@@ -577,7 +577,11 @@ def handle_about(ctx: ShellContext, args: list[str]):
         console.print("[yellow]Workspace not initialized. No KB metadata available.[/yellow]")
         return
 
-    rel_path = ctx.relativize(p)
+    try:
+        rel_path = p.relative_to(ctx.workspace.path).as_posix()
+    except ValueError:
+        rel_path = p.as_posix()
+
     info = ctx.workspace.kb.get_file_by_path(rel_path)
 
     if not info:

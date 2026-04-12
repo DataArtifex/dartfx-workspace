@@ -21,6 +21,7 @@ classifiers = [
 dependencies = [
   "blake3>=1.0.0",
   "clevercsv>=0.8.4",
+  "dartfx-utils @ git+https://github.com/DataArtifex/dartfx-utils.git",
   "polars>=1.30.0",
   "prompt_toolkit>=3.0.0",
   "pydantic>=2.10.0",

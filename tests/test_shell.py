@@ -38,7 +38,9 @@ def test_shell_handlers_imports_and_symbols(tmp_path):
         handle_ls(ctx, ["-R"])
 
         # Test about
-        handle_about(ctx, [str(dummy_dir / "file.txt")])
+        (dummy_dir / "subdir").mkdir()
+        (dummy_dir / "subdir" / "resource.csv").touch()
+        handle_about(ctx, [str(dummy_dir / "subdir" / "resource.csv")])
 
         # Test help
         handle_help(ctx, [])
