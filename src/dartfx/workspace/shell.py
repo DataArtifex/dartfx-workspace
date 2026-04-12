@@ -10,6 +10,7 @@ import shutil
 import stat
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 import typer
 from prompt_toolkit import PromptSession
@@ -170,8 +171,12 @@ def _get_type_label(kb_info: dict | None) -> str:
 def handle_ls(ctx: ShellContext, args: list[str]):
     show_all = False
     show_uuid = False
+    recursive = False
     type_filter = None
+    format_filter = None
+    mime_filter = None
     new_args = []
+    items: list[tuple[Path, str]] = []
 
     i = 0
     while i < len(args):
@@ -180,8 +185,16 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             show_all = True
         elif arg == "--uuid":
             show_uuid = True
+        elif arg in ("-R", "--recursive"):
+            recursive = True
         elif arg in ("-t", "--type") and i + 1 < len(args):
             type_filter = args[i + 1]
+            i += 1
+        elif arg == "--format" and i + 1 < len(args):
+            format_filter = args[i + 1]
+            i += 1
+        elif arg == "--mime" and i + 1 < len(args):
+            mime_filter = args[i + 1]
             i += 1
         else:
             new_args.append(arg)
@@ -205,13 +218,33 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         if not search_dir.exists() or not search_dir.is_dir():
             console.print(f"[red]ls: cannot access '{target_str}': No such directory[/red]")
             return
-        items = [item for item in search_dir.iterdir() if fnmatch.fnmatch(item.name, pattern)]
+        items = [(item, item.name) for item in search_dir.iterdir() if fnmatch.fnmatch(item.name, pattern)]
     else:
         target = ctx.resolve(target_str)
         if not target.exists():
             console.print(f"[red]ls: cannot access '{target_str}': No such file or directory[/red]")
             return
-        items = [target] if not target.is_dir() else list(target.iterdir())
+
+        if recursive:
+            if not target.is_dir():
+                items = [(target, target.name)]
+            else:
+                # Use sorted for consistent output
+                for p in sorted(target.rglob("*")):
+                    rel_p = p.relative_to(target)
+                    # Exclude hidden directories/files in traversal unless show_all
+                    if not show_all and any(part.startswith(".") for part in rel_p.parts):
+                        continue
+                    items.append((p, rel_p.as_posix()))
+        else:
+            if not target.is_dir():
+                items = [(target, target.name)]
+            else:
+                items = []
+                for p in sorted(target.iterdir()):
+                    if not show_all and p.name.startswith("."):
+                        continue
+                    items.append((p, p.name))
 
     # Prepare Knowledge Base data for cross-referencing
     kb_files = {}
@@ -221,7 +254,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         except Exception:
             pass
 
-    def _get_item_info(item: Path):
+    def _get_item_info(item: Path, display_name: str):
         is_dir = item.is_dir()
         rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
         kb_info = kb_files.get(rel_path)
@@ -242,7 +275,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             file_uuid = kb_info["uuid"] if kb_info else "-"
 
         suffix = "/" if is_dir else ""
-        return mode, size_str, mtime, registered, file_type, file_uuid, f"{item.name}{suffix}"
+        return mode, size_str, mtime, registered, file_type, file_uuid, f"{display_name}{suffix}"
 
     table = Table(box=None, show_header=True, header_style="bold cyan")
     table.add_column("Mode", style="dim")
@@ -255,15 +288,30 @@ def handle_ls(ctx: ShellContext, args: list[str]):
     table.add_column("Name", style="bold white")
 
     type_regex = re.compile(type_filter, re.I) if type_filter else None
+    format_regex = re.compile(format_filter, re.I) if format_filter else None
+    mime_regex = re.compile(mime_filter, re.I) if mime_filter else None
 
-    for item in sorted(items):
-        if not show_all and item.name.startswith("."):
-            continue
-        info = list(_get_item_info(item))
+    for item, display_name in items:
+        # Get raw KB info for specialized filters
+        rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
+        kb_info = kb_files.get(rel_path)
+
+        info = list(_get_item_info(item, display_name))
 
         if type_regex:
-            # Type is at index 4 in info list
             if not type_regex.search(info[4]):
+                continue
+
+        if format_regex:
+            fmt = kb_info.get("file_format", "-") if kb_info else "-"
+            if not format_regex.search(fmt):
+                continue
+
+        if mime_regex:
+            mt = kb_info.get("mime_type", "-") if kb_info else "-"
+            if mt is None:
+                mt = "-"
+            if not mime_regex.search(mt):
                 continue
 
         if not show_uuid:
@@ -278,6 +326,8 @@ def handle_tree(ctx: ShellContext, args: list[str]):
     show_uuid = False
     max_level = None
     type_filter = None
+    format_filter = None
+    mime_filter = None
 
     i = 0
     while i < len(args):
@@ -292,6 +342,12 @@ def handle_tree(ctx: ShellContext, args: list[str]):
             show_uuid = True
         elif arg in ("-t", "--type") and i + 1 < len(args):
             type_filter = args[i + 1]
+            i += 1
+        elif arg == "--format" and i + 1 < len(args):
+            format_filter = args[i + 1]
+            i += 1
+        elif arg == "--mime" and i + 1 < len(args):
+            mime_filter = args[i + 1]
             i += 1
         elif not arg.startswith("-"):
             target_str = arg
@@ -312,6 +368,8 @@ def handle_tree(ctx: ShellContext, args: list[str]):
 
     tree = Tree(f"[bold blue]{target.name}/[/bold blue]" if target.is_dir() else target.name)
     type_regex = re.compile(type_filter, re.I) if type_filter else None
+    format_regex = re.compile(format_filter, re.I) if format_filter else None
+    mime_regex = re.compile(mime_filter, re.I) if mime_filter else None
 
     def add_to_tree(directory: Path, tree_node, current_level: int):
         if max_level is not None and current_level >= max_level:
@@ -329,9 +387,19 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                 kb_info = kb_files.get(rel_path)
                 type_label = _get_type_label(kb_info)
 
-                # Apply type filter (only for files)
+                # Apply filters (only for files)
                 if type_regex and not type_regex.search(type_label):
                     continue
+
+                if format_regex:
+                    fmt = kb_info.get("file_format", "-") if kb_info else "-"
+                    if not format_regex.search(fmt or "-"):
+                        continue
+
+                if mime_regex:
+                    mt = kb_info.get("mime_type", "-") if kb_info else "-"
+                    if not mime_regex.search(mt or "-"):
+                        continue
 
                 if kb_info:
                     label = f"[green]✔[/green] {path.name} [dim]({type_label})[/dim]"
@@ -493,6 +561,64 @@ def handle_clear(_ctx: ShellContext, _args: list[str]):
     os.system("cls" if os.name == "nt" else "clear")
 
 
+def handle_about(ctx: ShellContext, args: list[str]):
+    if not args:
+        console.print("[red]about: missing operand[/red]")
+        return
+
+    target_str = args[0]
+    p = ctx.resolve(target_str)
+
+    if not p.exists():
+        console.print(f"[red]about: '{target_str}': No such file or directory[/red]")
+        return
+
+    if not ctx.workspace.is_initialized():
+        console.print("[yellow]Workspace not initialized. No KB metadata available.[/yellow]")
+        return
+
+    rel_path = ctx.relativize(p)
+    info = ctx.workspace.kb.get_file_by_path(rel_path)
+
+    if not info:
+        console.print(
+            f"[yellow]about: '{rel_path}': Resource not registered in Knowledge Base. Run 'scan' to register.[/yellow]"
+        )
+        return
+
+    # Core info table
+    table = Table.grid(padding=(0, 2))
+    table.add_column(style="dim", justify="right")
+    table.add_column()
+
+    table.add_row("Path:", f"[bold white]{info['path']}[/bold white]")
+    table.add_row("UUID:", f"[cyan]{info['uuid']}[/cyan]")
+    table.add_row("Type:", f"[magenta]{info['type']}[/magenta]")
+    table.add_row("Format:", f"[magenta]{info['file_format']}[/magenta]")
+    table.add_row("Mime:", f"[dim]{info.get('mime_type') or '-'}[/dim]")
+    table.add_row("Size:", f"{format_size(info['size_bytes'])} ({info['size_bytes']} bytes)")
+    table.add_row("Hash:", f"[blue]{info['blake3_hash']}[/blue]")
+    table.add_row("Created:", f"{info['created_at']}")
+    table.add_row("Modified:", f"{info['updated_at']}")
+
+    # Dynamic attributes
+    attrs = ctx.workspace.kb.get_resource_attributes(UUID(info["uuid"]))
+    if attrs:
+        table.add_row("", "")  # Spacer
+        table.add_row("[bold]Attributes:[/bold]", "")
+        for key, value in sorted(attrs.items()):
+            table.add_row(f"  {key}:", f"[green]{value}[/green]")
+
+    panel = Panel(
+        table,
+        title="[bold white]Resource Metadata[/bold white]",
+        subtitle=f"[dim]urn:uuid:{info['uuid']}[/dim]",
+        border_style="bright_blue",
+        expand=False,
+    )
+    console.print(panel)
+
+
 def handle_help(_ctx: ShellContext, _args: list[str]):
     table = Table(title="Available Commands", show_header=True, header_style="bold magenta")
     table.add_column("Command", style="cyan", no_wrap=True)
@@ -503,8 +629,9 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("scan", "Scan workspace and sync to KB (--clean for fresh scan)"),
         ("stats", "Show workspace statistics"),
         ("cd", "Change directory"),
-        ("ls", "List directory contents (-a, -t pattern, --uuid, or glob)"),
-        ("tree", "Display tree structure (-L level, -t pattern, --uuid)"),
+        ("ls", "List directory contents (-a, -R, -t pattern, --format, --mime, --uuid, or glob)"),
+        ("about", "Show detailed metadata for a file"),
+        ("tree", "Display tree structure (-L level, -t pattern, --format, --mime, --uuid)"),
         ("head", "Show first lines of a file (-n number)"),
         ("tail", "Show last lines of a file (-n number)"),
         ("pwd", "Print working directory"),
@@ -562,6 +689,7 @@ COMMAND_HANDLERS = {
     "init": handle_init,
     "scan": handle_scan,
     "stats": handle_stats,
+    "about": handle_about,
     "cd": handle_cd,
     "ls": handle_ls,
     "tree": handle_tree,

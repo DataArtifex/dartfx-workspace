@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dartfx.workspace.shell import ShellContext, handle_help, handle_ls, handle_tree
+from dartfx.workspace.shell import ShellContext, handle_about, handle_help, handle_ls, handle_tree
 
 
 def test_shell_handlers_imports_and_symbols(tmp_path):
@@ -26,23 +26,28 @@ def test_shell_handlers_imports_and_symbols(tmp_path):
     dummy_dir.mkdir()
     (dummy_dir / "file.txt").touch()
 
-    # Test handlers - should NOT raise NameError
+    # Test handlers - should NOT crash
     try:
-        # Test tree
-        handle_tree(ctx, [str(dummy_dir)])
+        # Test tree with various filters
+        handle_tree(ctx, [str(dummy_dir), "--format", "parquet"])
+        handle_tree(ctx, ["--uuid", "-L", "2"])
 
-        # Test ls
-        handle_ls(ctx, [str(dummy_dir)])
+        # Test ls with various flags (exercises hidden file filtering)
+        handle_ls(ctx, [str(dummy_dir), "--mime", "application/pdf"])
+        handle_ls(ctx, ["--all"])
+        handle_ls(ctx, ["-R"])
+
+        # Test about
+        handle_about(ctx, [str(dummy_dir / "file.txt")])
 
         # Test help
         handle_help(ctx, [])
 
-    except NameError as e:
-        pytest.fail(f"Shell handler failed with NameError (likely missing import): {e}")
-    except Exception:
-        # Other exceptions are okay in this smoke test (e.g. Typer Exit),
-        # but NameError is what we are hunting.
-        pass
+    except (NameError, UnboundLocalError) as e:
+        pytest.fail(f"Shell handler failed with Name/Unbound Error (missing import or init): {e}")
+    except Exception as e:
+        # We fail on any unexpected exception in our handlers
+        pytest.fail(f"Shell handler crashed with unexpected error: {type(e).__name__}: {e}")
 
 
 def test_type_label_helper():

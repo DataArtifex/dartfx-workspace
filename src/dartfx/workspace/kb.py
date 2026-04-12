@@ -162,7 +162,7 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?size ?hash ?type ?format ?created ?modified
+        SELECT ?uri ?uuid ?size ?hash ?type ?format ?mime ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -173,6 +173,7 @@ class KnowledgeBase:
                  dartfx:fileformat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
+               OPTIONAL { ?uri dartfx:mimeType ?mime . }
         }
         """
         for row in self.graph.query(q, initBindings={"path": Literal(path_str)}):
@@ -184,10 +185,24 @@ class KnowledgeBase:
                 "blake3_hash": str(r.hash),
                 "type": str(r.type),
                 "file_format": str(r.format),
+                "mime_type": str(r.mime) if hasattr(r, "mime") and r.mime else None,
                 "created_at": str(r.created),
                 "updated_at": str(r.modified),
             }
         return None
+
+    def get_resource_attributes(self, uuid: UUID) -> dict[str, str]:
+        """Returns all dynamic attributes for a resource in the DARTFX namespace."""
+        uri = self.get_resource_uri(uuid)
+        attrs = {}
+        for p, o in self.graph.predicate_objects(uri):
+            p_str = str(p)
+            if p_str.startswith(str(DARTFX)):
+                key = p_str.replace(str(DARTFX), "")
+                # Skip core fields we handle separately
+                if key not in ["uuid", "path", "filetype", "fileformat", "sizeBytes", "blake3", "mimeType"]:
+                    attrs[key] = str(o)
+        return attrs
 
     def get_all_files(self) -> list[dict]:
         """
@@ -197,7 +212,7 @@ class KnowledgeBase:
         q = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?created ?modified
+        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?mime ?created ?modified
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -208,6 +223,7 @@ class KnowledgeBase:
                  dartfx:fileformat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
+            OPTIONAL { ?uri dartfx:mimeType ?mime . }
         }
         """
         results = []
@@ -221,6 +237,7 @@ class KnowledgeBase:
                     "blake3_hash": str(r.hash),
                     "type": str(r.type),
                     "file_format": str(r.format),
+                    "mime_type": str(r.mime) if hasattr(r, "mime") and r.mime else None,
                     "created_at": str(r.created),
                     "updated_at": str(r.modified),
                 }
