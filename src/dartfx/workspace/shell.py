@@ -276,10 +276,11 @@ def handle_ls(ctx: ShellContext, args: list[str]):
 
         suffix = "/" if is_dir else ""
         name_style = "bold blue" if is_dir else "bold white"
-        name_text = Text.assemble(("⎘ ", "dim"), (f"{display_name}{suffix}", name_style))
-        name_text.stylize(f"link file://{item.absolute()}")
+        # Filenames are clickable links for easy opening
+        name_part = Text(f"{display_name}{suffix}", style=name_style)
+        name_part.stylize(f"link {item.as_uri()}")
 
-        return mode, size_str, mtime, registered, file_type, file_uuid, name_text
+        return mode, size_str, mtime, registered, file_type, file_uuid, name_part
 
     table = Table(box=None, show_header=True, header_style="bold cyan")
     table.add_column("Mode", style="dim")
@@ -373,7 +374,8 @@ def handle_tree(ctx: ShellContext, args: list[str]):
     root_label = Text(
         f"{target.name}/" if target.is_dir() else target.name, style="bold blue" if target.is_dir() else "bold white"
     )
-    root_label.stylize(f"link file://{target.absolute()}")
+    # For tree root, use absolute URI to ensure the base is opening correctly
+    root_label.stylize(f"link {target.as_uri()}")
     tree = Tree(root_label)
     type_regex = re.compile(type_filter, re.I) if type_filter else None
     format_regex = re.compile(format_filter, re.I) if format_filter else None
@@ -388,8 +390,8 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                 continue
 
             if path.is_dir():
-                label = Text.assemble(("⎘ ", "dim"), (f"{path.name}/", "bold blue"))
-                label.stylize(f"link file://{path.absolute()}")
+                label = Text(f"{path.name}/", style="bold blue")
+                label.stylize(f"link {path.as_uri()}")
                 branch = tree_node.add(label)
                 add_to_tree(path, branch, current_level + 1)
             else:
@@ -411,17 +413,15 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                     if not mime_regex.search(mt or "-"):
                         continue
 
-                name_text = Text.assemble(("⎘ ", "dim"), (path.name, "white"))
-                name_text.stylize(f"link file://{path.absolute()}")
+                name_part = Text(path.name, style="white")
+                name_part.stylize(f"link {path.as_uri()}")
 
                 if kb_info:
-                    label = Text.assemble(
-                        ("[green]✔[/green] ", "bold green"), name_text, (f" [dim]({type_label})[/dim]", "dim")
-                    )
+                    label = Text.assemble(("✔ ", "bold green"), name_part, (f" ({type_label})", "dim"))
                     if show_uuid:
-                        label.append(f" [dim blue]<{kb_info['uuid']}>[/dim blue]", style="dim blue")
+                        label.append(f" <{kb_info['uuid']}>", style="dim blue")
                 else:
-                    label = Text.assemble(("[red]✘[/red] ", "bold red"), name_text)
+                    label = Text.assemble(("✘ ", "bold red"), name_part)
 
                 tree_node.add(label)
 
@@ -628,46 +628,20 @@ def handle_about(ctx: ShellContext, args: list[str]):
         for key, value in sorted(attrs.items()):
             table.add_row(f"  {key}:", f"[green]{value}[/green]")
 
+    # KB directory shortcut for this SPECIFIC resource
+    # Metadata is mirrored at .dartfx/kb/workspace/<rel_path>/
+    kb_res_path = ctx.workspace.dartfx_dir / "kb" / "workspace" / info["path"]
+
+    subtitle = Text.assemble("📂", (" metadata ", f"link {kb_res_path.as_uri()}"), "📂")
+
     panel = Panel(
         table,
         title="[bold white]Resource Metadata[/bold white]",
-        subtitle=f"[dim]urn:uuid:{info['uuid']}[/dim]",
+        subtitle=subtitle,
         border_style="bright_blue",
         expand=False,
     )
     console.print(panel)
-
-
-def handle_copy(ctx: ShellContext, args: list[str]):
-    if not args:
-        console.print("[red]copy: missing operand[/red]")
-        return
-
-    target_str = args[0]
-    p = ctx.resolve(target_str)
-
-    if not p.exists():
-        console.print(f"[red]copy: '{target_str}': No such file or directory[/red]")
-        return
-
-    # Get the "clean" relative path (workspace relative)
-    try:
-        rel_path = p.relative_to(ctx.workspace.path).as_posix()
-    except ValueError:
-        rel_path = p.as_posix()
-
-    # Use OSC 52 escape sequence to copy to clipboard
-    # OSC 52: ESC ] 52 ; c ; <base64> BEL
-    import base64
-
-    b64_path = base64.b64encode(rel_path.encode()).decode()
-    # Write directly to stdout to ensure the sequence isn't filtered by rich
-    import sys
-
-    sys.stdout.write(f"\033]52;c;{b64_path}\007")
-    sys.stdout.flush()
-
-    console.print(f"[green]Copied path to clipboard: [bold]{rel_path}[/bold][/green]")
 
 
 def handle_help(_ctx: ShellContext, _args: list[str]):
@@ -687,7 +661,6 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("tail", "Show last lines of a file (-n number)"),
         ("pwd", "Print working directory"),
         ("mkdir", "Create a directory"),
-        ("copy", "Copy file path to system clipboard"),
         ("mv", "Move or rename files/directories"),
         ("cp", "Copy files/directories"),
         ("rm", "Remove files/directories"),
@@ -749,7 +722,6 @@ COMMAND_HANDLERS = {
     "tail": handle_tail,
     "pwd": handle_pwd,
     "mkdir": handle_mkdir,
-    "copy": handle_copy,
     "mv": handle_mv,
     "cp": handle_cp,
     "rm": handle_rm,

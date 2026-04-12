@@ -27,6 +27,10 @@ class KnowledgeBase:
         self.resource_dir.mkdir(parents=True, exist_ok=True)
         self._load()
 
+    def get_resource_metadata_path(self, path: Path) -> Path:
+        """Returns the directory where a specific resource's metadata is stored."""
+        return self.resource_dir / path
+
     def _load(self):
         """Loads all individual turtle files from the resource directory."""
         self.graph.bind("dcterms", DCTERMS)
