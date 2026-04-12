@@ -275,7 +275,11 @@ def handle_ls(ctx: ShellContext, args: list[str]):
             file_uuid = kb_info["uuid"] if kb_info else "-"
 
         suffix = "/" if is_dir else ""
-        return mode, size_str, mtime, registered, file_type, file_uuid, f"{display_name}{suffix}"
+        name_style = "bold blue" if is_dir else "bold white"
+        name_text = Text.assemble(("⎘ ", "dim"), (f"{display_name}{suffix}", name_style))
+        name_text.stylize(f"link file://{item.absolute()}")
+
+        return mode, size_str, mtime, registered, file_type, file_uuid, name_text
 
     table = Table(box=None, show_header=True, header_style="bold cyan")
     table.add_column("Mode", style="dim")
@@ -366,7 +370,11 @@ def handle_tree(ctx: ShellContext, args: list[str]):
         except Exception:
             pass
 
-    tree = Tree(f"[bold blue]{target.name}/[/bold blue]" if target.is_dir() else target.name)
+    root_label = Text(
+        f"{target.name}/" if target.is_dir() else target.name, style="bold blue" if target.is_dir() else "bold white"
+    )
+    root_label.stylize(f"link file://{target.absolute()}")
+    tree = Tree(root_label)
     type_regex = re.compile(type_filter, re.I) if type_filter else None
     format_regex = re.compile(format_filter, re.I) if format_filter else None
     mime_regex = re.compile(mime_filter, re.I) if mime_filter else None
@@ -380,7 +388,9 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                 continue
 
             if path.is_dir():
-                branch = tree_node.add(f"[bold blue]{path.name}/[/bold blue]")
+                label = Text.assemble(("⎘ ", "dim"), (f"{path.name}/", "bold blue"))
+                label.stylize(f"link file://{path.absolute()}")
+                branch = tree_node.add(label)
                 add_to_tree(path, branch, current_level + 1)
             else:
                 rel_path = path.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
@@ -401,12 +411,17 @@ def handle_tree(ctx: ShellContext, args: list[str]):
                     if not mime_regex.search(mt or "-"):
                         continue
 
+                name_text = Text.assemble(("⎘ ", "dim"), (path.name, "white"))
+                name_text.stylize(f"link file://{path.absolute()}")
+
                 if kb_info:
-                    label = f"[green]✔[/green] {path.name} [dim]({type_label})[/dim]"
+                    label = Text.assemble(
+                        ("[green]✔[/green] ", "bold green"), name_text, (f" [dim]({type_label})[/dim]", "dim")
+                    )
                     if show_uuid:
-                        label += f" [dim blue]<{kb_info['uuid']}>[/dim blue]"
+                        label.append(f" [dim blue]<{kb_info['uuid']}>[/dim blue]", style="dim blue")
                 else:
-                    label = f"[red]✘[/red] {path.name}"
+                    label = Text.assemble(("[red]✘[/red] ", "bold red"), name_text)
 
                 tree_node.add(label)
 
@@ -623,6 +638,38 @@ def handle_about(ctx: ShellContext, args: list[str]):
     console.print(panel)
 
 
+def handle_copy(ctx: ShellContext, args: list[str]):
+    if not args:
+        console.print("[red]copy: missing operand[/red]")
+        return
+
+    target_str = args[0]
+    p = ctx.resolve(target_str)
+
+    if not p.exists():
+        console.print(f"[red]copy: '{target_str}': No such file or directory[/red]")
+        return
+
+    # Get the "clean" relative path (workspace relative)
+    try:
+        rel_path = p.relative_to(ctx.workspace.path).as_posix()
+    except ValueError:
+        rel_path = p.as_posix()
+
+    # Use OSC 52 escape sequence to copy to clipboard
+    # OSC 52: ESC ] 52 ; c ; <base64> BEL
+    import base64
+
+    b64_path = base64.b64encode(rel_path.encode()).decode()
+    # Write directly to stdout to ensure the sequence isn't filtered by rich
+    import sys
+
+    sys.stdout.write(f"\033]52;c;{b64_path}\007")
+    sys.stdout.flush()
+
+    console.print(f"[green]Copied path to clipboard: [bold]{rel_path}[/bold][/green]")
+
+
 def handle_help(_ctx: ShellContext, _args: list[str]):
     table = Table(title="Available Commands", show_header=True, header_style="bold magenta")
     table.add_column("Command", style="cyan", no_wrap=True)
@@ -640,6 +687,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("tail", "Show last lines of a file (-n number)"),
         ("pwd", "Print working directory"),
         ("mkdir", "Create a directory"),
+        ("copy", "Copy file path to system clipboard"),
         ("mv", "Move or rename files/directories"),
         ("cp", "Copy files/directories"),
         ("rm", "Remove files/directories"),
@@ -701,6 +749,7 @@ COMMAND_HANDLERS = {
     "tail": handle_tail,
     "pwd": handle_pwd,
     "mkdir": handle_mkdir,
+    "copy": handle_copy,
     "mv": handle_mv,
     "cp": handle_cp,
     "rm": handle_rm,
