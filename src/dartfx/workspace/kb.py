@@ -114,11 +114,11 @@ class KnowledgeBase:
 
         # Path and Type
         self.graph.add((uri, DARTFX.path, Literal(path.as_posix())))
-        self.graph.add((uri, DARTFX.filetype, Literal(file_type)))
+        self.graph.add((uri, DARTFX.fileType, Literal(file_type)))
         self.graph.add((uri, SCHEMA.fileFormat, Literal(file_type)))
 
         # Format classification
-        self.graph.add((uri, DARTFX.fileformat, Literal(file_format)))
+        self.graph.add((uri, DARTFX.fileFormat, Literal(file_format)))
         if mime_type:
             self.graph.add((uri, DARTFX.mimeType, Literal(mime_type)))
 
@@ -169,8 +169,8 @@ class KnowledgeBase:
                  dartfx:path ?path ;
                  dartfx:sizeBytes ?size ;
                  dartfx:blake3 ?hash ;
-                 dartfx:filetype ?type ;
-                 dartfx:fileformat ?format ;
+                 dartfx:fileType ?type ;
+                 dartfx:fileFormat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
                OPTIONAL { ?uri dartfx:mimeType ?mime . }
@@ -200,7 +200,7 @@ class KnowledgeBase:
             if p_str.startswith(str(DARTFX)):
                 key = p_str.replace(str(DARTFX), "")
                 # Skip core fields we handle separately
-                if key not in ["uuid", "path", "filetype", "fileformat", "sizeBytes", "blake3", "mimeType"]:
+                if key not in ["uuid", "path", "fileType", "fileFormat", "sizeBytes", "blake3", "mimeType"]:
                     attrs[key] = str(o)
         return attrs
 
@@ -219,8 +219,8 @@ class KnowledgeBase:
                  dartfx:path ?path ;
                  dartfx:sizeBytes ?size ;
                  dartfx:blake3 ?hash ;
-                 dartfx:filetype ?type ;
-                 dartfx:fileformat ?format ;
+                 dartfx:fileType ?type ;
+                 dartfx:fileFormat ?format ;
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
             OPTIONAL { ?uri dartfx:mimeType ?mime . }
