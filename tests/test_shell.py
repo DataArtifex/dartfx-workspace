@@ -16,6 +16,21 @@ def test_shell_handlers_imports_and_symbols(tmp_path):
     mock_ws.is_initialized.return_value = True
     mock_ws.kb.get_all_files.return_value = []
 
+    # Mock specific KB lookups needed for handle_about
+    mock_ws.kb.get_file_by_path.return_value = {
+        "path": "dummy/subdir/resource.csv",
+        "uuid": "550e8400-e29b-41d4-a716-446655440000",
+        "type": "data/csv",
+        "file_format": "csv",
+        "mime_type": "text/csv",
+        "size_bytes": 1024,
+        "blake3_hash": "abc",
+        "created_at": "2024-01-01",
+        "updated_at": "2024-01-01",
+    }
+    mock_ws.kb.get_resource_attributes.return_value = {}
+    mock_ws.dartfx_dir = tmp_path / ".dartfx"
+
     # Mock ShellContext
     ctx = ShellContext(mock_ws)
     ctx.cwd = tmp_path
