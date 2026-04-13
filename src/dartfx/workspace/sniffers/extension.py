@@ -24,6 +24,7 @@ EXTENSION_MAP: dict[str, tuple[FileType, FileFormat]] = {
     ".xls": (FileType.DATA, FileFormat.XLS),
     # Metadata formats — JSON is metadata by default in this domain
     ".json": (FileType.METADATA, FileFormat.JSON),
+    ".jsonl": (FileType.DATA, FileFormat.JSONL),
     ".jsonld": (FileType.METADATA, FileFormat.JSONLD),
     ".ttl": (FileType.METADATA, FileFormat.TURTLE),
     ".n3": (FileType.METADATA, FileFormat.N3),

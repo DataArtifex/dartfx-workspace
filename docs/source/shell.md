@@ -22,7 +22,15 @@ Initializes a new workspace by creating the `.dartfx` metadata directory.
     *   `--dirs`: Automatically creates a standard recommended directory structure (`data/`, `docs/`, `code/`, `meta/`, `work/`).
 
 ### `scan`
-Scans the entire workspace and synchronizes file metadata with the RDF Knowledge Base. It identifies new files, tracks renames/moves (via BLAKE3 hashes), and removes stale registration entries.
+Synchronizes the workspace with the Knowledge Base.
+*   **Context-Aware**: If no path is provided, it scans the **current directory and below**.
+*   **Targeted**: You can specify a target path (e.g., `scan data/raw`) to re-index only that folder.
+*   **Clean**: Use `scan --clean` to wipe existing metadata and start a fresh full-workspace scan.
+
+### `about`
+Displays detailed technical and FAIR metadata for a specific resource.
+*   **Interactive**: Includes a subtle 📂 icon next to the resource UUID. **Cmd+Click** (or Ctrl+Click) on this icon to immediately open the resource's mirrored metadata storage directory in your system file manager.
+*   **Content**: Shows Blake3 hashes, record counts (for data files), SQL/Shell types (for code), and linked FAIR IDs.
 
 ### `stats`
 Displays a comprehensive breakdown of the workspace, including:
@@ -65,9 +73,9 @@ The shell provides standard utilities that operate relative to the workspace roo
 *   **`cd <dir>`**: Change the current working directory.
 *   **`pwd`**: Print the current working directory relative to the workspace root.
 *   **`mkdir <dir>`**: Create new directories.
-*   **`mv <src> <dst>`**: Move or rename files/directories.
+*   **`mv <src> <dst>`**: Move or rename files/directories. Automatically updates stable UUID mappings in the Knowledge Base.
 *   **`cp <src> <dst>`**: Copy files or directories.
-*   **`rm <path>`**: Remove files or directories.
+*   **`rm <path>`**: Remove files or directories. Recursively cleans up Knowledge Base records and mirrored storage for the target path.
 
 ---
 

@@ -29,6 +29,7 @@ class FileFormat(StrEnum):
     FIXED_WIDTH = "fixed-width"
     PARQUET = "parquet"
     JSON = "json"
+    JSONL = "jsonl"
     SAS7BDAT = "sas7bdat"
     DTA = "dta"
     SAV = "sav"
@@ -110,6 +111,7 @@ MIME_TYPE_MAP: dict[FileFormat, str] = {
     FileFormat.TSV: "text/tab-separated-values",
     FileFormat.PARQUET: "application/vnd.apache.parquet",
     FileFormat.JSON: "application/json",
+    FileFormat.JSONL: "application/x-jsonlines",
     FileFormat.JSONLD: "application/ld+json",
     FileFormat.SAS7BDAT: "application/x-sas-data",
     FileFormat.DTA: "application/x-stata-dta",

@@ -12,13 +12,11 @@
 
 ---
 
-## 🚀 Key Features
-
-- **Interactive Shell**: A powerful, contextual command-line interface for navigating and managing file resources.
-- **Semantic Knowledge Base**: Automatic generation of RDF metadata (Turtle) using **Dublin Core** and **Schema.org** (`schema:MediaObject`) standards.
-- **Cross-Platform**: Fully tested on macOS, Linux, and Windows with consistent path handling.
-- **Dynamic Resource Tracking**: Recognizes renames and moves within the workspace using stable UUIDs and BLAKE3 hashes.
-- **AI Readiness**: Designed to work seamlessly with AI agents and MCP servers.
+- **Targeted Scanning**: Sync the full workspace or target specific subdirectories with `scan .` for high-performance indexing.
+- **Interactive Metadata**: Minimalist `about` command with clickable links to resource-mirrored metadata storage.
+- **Robust Persistence**: Atomic Knowledge Base updates for `mv` and `rm` operations, ensuring stable UUIDs across directory renames.
+- **Context-Free Classification**: Scientific-grade file type sniffing relying on signatures (SQL, JSONL, SAS, etc.) rather than directory hints.
+- **FAIR-Aligned**: Seamless generation of RDF metadata (Turtle) using **Dublin Core** and **Schema.org** standards.
 
 ## 🛠 Installation
 
@@ -43,21 +41,16 @@ uv run dartfx-workspace .
 ```
 
 ### Common Commands:
-- `init --dirs`: Initialize the workspace and create standard directories (`data/`, `docs/`, `meta/`, etc.)
-- `scan`: Perform a deep scan of the filesystem to register files in the Knowledge Base.
-- `stats`: Show a breakdown of file types, sizes, and registration status.
-- `ls -l -h --uuid`: List files with metadata, human-readable sizes, and stable UUIDs.
+- `scan [path]`: Sync the Knowledge Base. Defaults to the current directory and below.
+- `stats`: Show a high-level breakdown of file types (Data, Code, Docs) and registration status.
+- `ls -l --uuid`: List files with stable UUIDs and registration status (✔/✘).
+- `about <file>`: Show detailed FAIR metadata. Includes a clickable 📂 icon that opens the mirrored storage directory.
+- `mv / rm`: Standard filesystem operations that automatically update the semantic graph.
 - `tree -L 2`: Visualize the directory hierarchy.
-- `head / tail -n 20`: Inspect the multi-line content of files.
-
-### Registration Status:
-The shell uses visual indicators to show if a file is tracked in the Knowledge Base:
-- **✔**: Registered resource with persistent metadata.
-- **✘**: Unregistered/new file.
 
 ## 🧠 Knowledge Base
 
-The Knowledge Base lives in `.dartfx/kb/turtle/files/`. Each file you register gets its own stable URI:
+The Knowledge Base is mirrored at `.dartfx/kb/workspace/`. Each resource has a dedicated directory containing its `resources.ttl` file, making it accessible to external RDF tools and AI agents.
 `https://dataartifex.org/workspace/<UUID>`
 
 We integrate multiple vocabularies for maximum interoperability:
