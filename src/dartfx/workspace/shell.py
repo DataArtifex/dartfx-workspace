@@ -100,17 +100,26 @@ def handle_scan(ctx: ShellContext, args: list[str]):
         else:
             return
 
+    # Determine scan target
+    # If a path is provided in args, resolve it, otherwise use current working directory
+    target_path = ctx.cwd
+    for arg in args:
+        if not arg.startswith("-"):
+            target_path = ctx.resolve(arg)
+            break
+
     with Progress(
         SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
+        # Show target in description
+        TextColumn(f"Scanning [bold cyan]{ctx.relativize(target_path)}[/bold cyan]..."),
         transient=True,
     ) as progress:
-        task = progress.add_task("Scanning workspace...", total=None)
+        task = progress.add_task("Working...", total=None)
 
         def update_progress(path: str):
             progress.update(task, description=f"Scanning [cyan]{path}[/cyan]")
 
-        ctx.workspace.scanner.scan(status_callback=update_progress)
+        ctx.workspace.scanner.scan(target_path=target_path, status_callback=update_progress)
 
     console.print("[green]Scan complete.[/green]")
 

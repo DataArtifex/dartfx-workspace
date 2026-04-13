@@ -41,15 +41,24 @@ class Scanner:
             result.attributes,
         )
 
-    def scan(self, status_callback: Callable[[str], None] | None = None):
-        """Scans the workspace and synchronizes with the Knowledge Base."""
+    def scan(
+        self,
+        target_path: Path | None = None,
+        status_callback: Callable[[str], None] | None = None,
+    ):
+        """
+        Scans a portion of the workspace (defaults to root) and synchronizes
+        with the Knowledge Base.
+        """
+        search_root = target_path or self.workspace_path
+
         existing_files = self.kb.get_all_files()
         existing_path_map = {f["path"]: f for f in existing_files}
         existing_hash_map = {f["blake3_hash"]: f for f in existing_files}
 
         current_paths = set()
 
-        for p in self.workspace_path.rglob("*"):
+        for p in search_root.rglob("*"):
             if not p.is_file():
                 continue
 
@@ -118,10 +127,20 @@ class Scanner:
 
         self.kb.save()
 
-        # Phase 2: Cleanup missing files
+        # Phase 2: Cleanup missing files ONLY within the search root
         updated_kb_files = self.kb.get_all_files()
+
+        # Calculate target relative path for scoped cleanup
+        target_rel = search_root.relative_to(self.workspace_path).as_posix()
+        if target_rel == ".":
+            target_rel = ""
+
         for f in updated_kb_files:
-            if f["path"] not in current_paths:
+            f_path = f["path"]
+            # Check if file is missing on disk AND it belongs to the scanned target area
+            in_target_area = f_path == target_rel or f_path.startswith(target_rel + "/") or target_rel == ""
+
+            if f_path not in current_paths and in_target_area:
                 self.kb.remove_file_resource(uuid.UUID(f["uuid"]))
 
         self.kb.save()
