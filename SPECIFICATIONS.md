@@ -170,8 +170,6 @@ We should be able to start the:
 - A stable UUID (e.g., `8d47efc9-c158-4c31-b562-7537df20b325`) ensures tracking persistence across file renames or moves.
 
 
-## Roadmap
-
 ### File Classification & Sniffing
 The workspace uses a high-performance, two-tier classification system:
 - **FileType**: Broad category (`data`, `metadata`, `documentation`, `code`, `compressed`, `media`, `other`).
@@ -200,6 +198,9 @@ After classification, specific format attributes are extracted and stored in the
     - etc.
 - Potentially leverage adapters for the sniffers
 
+## Roadmap
+
+
 ### Tooling
 
 A set of recommended tools should be provided to help users manage their workspaces.
@@ -217,6 +218,10 @@ The package should be able to detect the presence of these tools in the user's e
 - We should leverage this wrapper to implement the necessary interfaces to call the various underlying commands and verufy installation
 - The shell will define proxy commands that use the dartfx-readstat package to call the various underlying ReadStat commands
 
+#### DuckDB
+- For fast querying of tabular data (complements QSV/polars)
+
+
 ### Focus On command and context
 - Various stages of the FAIR data lifecycle requires different tools.
 - We should implement a `focuson` command that will determie which command and tools are currently active (or visible in help)
@@ -229,7 +234,30 @@ The package should be able to detect the presence of these tools in the user's e
 - We should implement a `workon` command that sets this in the context to support commmands that opoerate on data files
 - The file being 'worked on' will then be used as 'default'
 
-## Spaces
+### Flexible Triple Store Support
+- Add persistence to the workspace triple store
+- Allow the triple store to use an actual server instead of the internal rdflib library (qlever, oxygraph, graphdb, etc.)
+- Each workspace would need to have its own graph
+
+### Variable classifiers
+- command set for classifying variables
+    - categorical, nominal, continuous, ordinal, etc.
+    - dimension, measure
+    - weight
+    - direct identifier, foreign key, etc.
+    - secondary identifier (for SDC)
+    - system, temporary
+- requires summary statistics and frequencies
+- associate with concepts / CV
+
+### Story Builder
+commands to
+- create tables from data files
+- create fact sheets from tables and other resources
+- create stories
+- create training data for models
+
+### Spaces
 A `space` is a virtual storage area that groups workspaces and can be used to:
 - control access to the underlying workspace
 - limit the total amount of storage used by its underlying workspace

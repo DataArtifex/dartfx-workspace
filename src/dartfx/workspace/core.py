@@ -27,6 +27,33 @@ class Workspace:
         self._kb: KnowledgeBase | None = None
         self._scanner: Scanner | None = None
 
+    @staticmethod
+    def _dartfx_dir_for(path: Path) -> Path:
+        env_dir = os.environ.get("DARTFX_WORKSPACE_DIR", ".dartfx")
+        return path / env_dir
+
+    @classmethod
+    def find_nearest_initialized_path(cls, path: Path) -> Path | None:
+        """Returns the closest initialized workspace at or above path."""
+        candidate = path.resolve()
+        while True:
+            if cls._dartfx_dir_for(candidate).is_dir():
+                return candidate
+            if candidate.parent == candidate:
+                return None
+            candidate = candidate.parent
+
+    @classmethod
+    def find_parent_initialized_path(cls, path: Path) -> Path | None:
+        """Returns the nearest initialized parent workspace above path (excluding path)."""
+        candidate = path.resolve().parent
+        while True:
+            if cls._dartfx_dir_for(candidate).is_dir():
+                return candidate
+            if candidate.parent == candidate:
+                return None
+            candidate = candidate.parent
+
     @classmethod
     def init(cls, path: Path | None = None, create_dirs: bool = False) -> "Workspace":
         ws = cls(path)

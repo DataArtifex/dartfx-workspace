@@ -8,6 +8,7 @@ import re
 import shlex
 import shutil
 import stat
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
@@ -36,6 +37,10 @@ COMMANDS = [
     "init",
     "scan",
     "stats",
+    "readstat",
+    "metadata",
+    "tocsv",
+    "qsv-fairify",
     "cd",
     "ls",
     "tree",
@@ -53,6 +58,8 @@ COMMANDS = [
     "?",
 ]
 IGNORE_DIRS = {".dartfx", ".git", "__pycache__", "venv", ".venv"}
+SUPPORTED_READSTAT_INPUT_SUFFIXES = {".dta", ".por", ".sav", ".sas7bdat", ".xpt", ".zsav"}
+SUPPORTED_QSV_FAIRIFY_SUFFIXES = {".csv", ".parquet", ".pq"}
 
 
 class ShellContext:
@@ -79,8 +86,34 @@ class ShellContext:
         return (self.cwd / p).resolve()
 
 
+def resolve_shell_workspace(start_path: Path) -> tuple[Workspace, Path]:
+    """Resolves workspace root from start_path, falling back to nearest initialized parent."""
+    initial_path = start_path.resolve()
+    ws = Workspace(initial_path)
+
+    if ws.is_initialized():
+        return ws, initial_path
+
+    parent_root = Workspace.find_nearest_initialized_path(initial_path)
+    if parent_root is not None:
+        return Workspace(parent_root), initial_path
+
+    return ws, initial_path
+
+
 def handle_init(ctx: ShellContext, args: list[str]):
     create_dirs = "--dirs" in args
+    parent_ws = Workspace.find_parent_initialized_path(ctx.workspace.path)
+    if parent_ws is not None:
+        typer.secho(
+            (
+                "init: cannot initialize nested workspace at "
+                f"{ctx.workspace.path}. Parent workspace exists at {parent_ws}."
+            ),
+            fg=typer.colors.RED,
+        )
+        return
+
     Workspace.init(ctx.workspace.path, create_dirs=create_dirs)
     typer.echo(f"Initialized workspace at {ctx.workspace.path}")
     if create_dirs:
@@ -581,6 +614,392 @@ def handle_rm(ctx: ShellContext, args: list[str]):
             typer.secho(f"rm error: {e}", fg=typer.colors.RED)
 
 
+def handle_metadata(ctx: ShellContext, args: list[str]):
+    """Extract metadata from a readstat-supported file to JSON."""
+    if not args:
+        typer.echo("Usage: metadata <input.(dta|por|sav|sas7bdat|xpt|zsav)> [output.json]")
+        typer.echo("  If output.json is omitted, defaults to <input>.json")
+        return
+
+    source_arg = args[0]
+    source_path = ctx.resolve(source_arg)
+
+    if not source_path.exists() or not source_path.is_file():
+        typer.secho(f"metadata: source file not found: {source_arg}", fg=typer.colors.RED)
+        return
+
+    if source_path.suffix.lower() not in SUPPORTED_READSTAT_INPUT_SUFFIXES:
+        allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_READSTAT_INPUT_SUFFIXES))
+        typer.secho(
+            f"metadata: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
+            fg=typer.colors.RED,
+        )
+        return
+
+    # Determine output filename
+    if len(args) > 1:
+        output_arg = args[1]
+    else:
+        # Auto-generate <input>.json
+        output_arg = f"{source_arg}.json"
+
+    output_path = ctx.resolve(output_arg)
+
+    # Delegate to readstat
+    handle_readstat(ctx, [str(source_path), str(output_path)])
+
+
+def handle_readstat(ctx: ShellContext, args: list[str]):
+    """Proxy command that routes to readstat or extract_metadata based on arguments."""
+
+    def _resolve_arg(token: str) -> Path:
+        p = Path(token)
+        if p.is_absolute():
+            return p
+        return ctx.resolve(token)
+
+    if not args:
+        typer.echo("ReadStat proxy usage:")
+        typer.echo("  readstat <input.(dta|por|sav|sas7bdat|xpt|zsav)>")
+        typer.echo("    View metadata for input file")
+        typer.echo("  readstat --metadata [--force] <input> [output.json]")
+        typer.echo("    Extract metadata to JSON (calls extract_metadata)")
+        typer.echo("  readstat <input> <output.csv>")
+        typer.echo("    Convert to CSV")
+        typer.echo("  readstat <input.sas7bdat> <input.sas7bcat> <output.csv>")
+        typer.echo("    Convert SAS file with catalog to CSV")
+        return
+
+    # Check for --metadata flag
+    has_metadata_flag = "--metadata" in args
+
+    if has_metadata_flag:
+        # Use extract_metadata for metadata extraction
+        extract_metadata_bin = shutil.which("extract_metadata")
+        if not extract_metadata_bin:
+            typer.secho("extract_metadata: command not found. Install readstat and try again.", fg=typer.colors.RED)
+            return
+
+        # Check for --force flag
+        force = "--force" in args
+
+        # Remove --metadata and --force flags and build args for extract_metadata
+        metadata_args = [arg for arg in args if arg not in ("--metadata", "--force")]
+
+        if not metadata_args:
+            typer.echo("Usage: readstat --metadata [--force] <input> [output.json]")
+            return
+
+        source_arg = metadata_args[0]
+        source_path = _resolve_arg(source_arg)
+
+        if not source_path.exists() or not source_path.is_file():
+            typer.secho(f"readstat: source file not found: {source_arg}", fg=typer.colors.RED)
+            return
+
+        if source_path.suffix.lower() not in SUPPORTED_READSTAT_INPUT_SUFFIXES:
+            allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_READSTAT_INPUT_SUFFIXES))
+            typer.secho(
+                f"readstat: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
+                fg=typer.colors.RED,
+            )
+            return
+
+        # Determine output filename
+        if len(metadata_args) > 1:
+            output_arg = metadata_args[1]
+        else:
+            output_arg = f"{source_arg}.json"
+
+        output_path = _resolve_arg(output_arg)
+
+        # Check if output file exists
+        if output_path.exists():
+            if not force:
+                typer.secho(
+                    f"readstat: metadata file already exists: {output_path}. Use --force to overwrite.",
+                    fg=typer.colors.RED,
+                )
+                return
+            try:
+                output_path.unlink()
+            except OSError as e:
+                typer.secho(f"readstat: cannot overwrite metadata file: {e}", fg=typer.colors.RED)
+                return
+
+        try:
+            result = subprocess.run(
+                [extract_metadata_bin, str(source_path), str(output_path)], cwd=ctx.cwd, check=False
+            )
+            if result.returncode != 0:
+                typer.secho(f"extract_metadata exited with status {result.returncode}", fg=typer.colors.RED)
+                return
+
+            if not ctx.workspace.is_initialized():
+                return
+
+            if not output_path.exists() or not output_path.is_file():
+                return
+
+            if not output_path.is_relative_to(ctx.workspace.path):
+                return
+
+            ctx.workspace.scanner.scan_path(output_path)
+        except OSError as e:
+            typer.secho(f"extract_metadata error: {e}", fg=typer.colors.RED)
+    else:
+        # Use readstat for view or conversion
+        readstat_bin = shutil.which("readstat")
+        if not readstat_bin:
+            typer.secho("readstat: command not found. Install readstat and try again.", fg=typer.colors.RED)
+            return
+
+        resolved_args: list[str] = []
+        for arg in args:
+            if arg == "-" or arg.startswith("-"):
+                resolved_args.append(arg)
+            else:
+                resolved_args.append(str(_resolve_arg(arg)))
+
+        try:
+            result = subprocess.run([readstat_bin, *resolved_args], cwd=ctx.cwd, check=False)
+            if result.returncode != 0:
+                typer.secho(f"readstat exited with status {result.returncode}", fg=typer.colors.RED)
+                return
+
+            if not ctx.workspace.is_initialized():
+                return
+
+            # Try to infer output file from args (last positional argument that's not -)
+            positional = [arg for arg in args if not arg.startswith("-") and arg != "-"]
+            if len(positional) >= 2:
+                output_arg = positional[-1]
+                output_path = _resolve_arg(output_arg)
+
+                if output_path.exists() and output_path.is_file() and output_path.is_relative_to(ctx.workspace.path):
+                    ctx.workspace.scanner.scan_path(output_path)
+        except OSError as e:
+            typer.secho(f"readstat error: {e}", fg=typer.colors.RED)
+
+
+def handle_tocsv(ctx: ShellContext, args: list[str]):
+    """Convert a supported readstat source file to CSV via the readstat proxy."""
+    force = False
+    source_arg: str | None = None
+
+    for arg in args:
+        if arg in ("-f", "--force"):
+            force = True
+            continue
+
+        if arg.startswith("-"):
+            typer.secho(f"tocsv: unknown option: {arg}", fg=typer.colors.RED)
+            return
+
+        if source_arg is not None:
+            typer.secho("tocsv: too many positional arguments", fg=typer.colors.RED)
+            return
+
+        source_arg = arg
+
+    if not source_arg:
+        typer.echo("Usage: tocsv [--force|-f] <input.(dta|por|sav|sas7bdat|xpt|zsav)>")
+        return
+
+    source_path = ctx.resolve(source_arg)
+    if not source_path.exists() or not source_path.is_file():
+        typer.secho(f"tocsv: source file not found: {source_arg}", fg=typer.colors.RED)
+        return
+
+    if source_path.suffix.lower() not in SUPPORTED_READSTAT_INPUT_SUFFIXES:
+        allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_READSTAT_INPUT_SUFFIXES))
+        typer.secho(
+            f"tocsv: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}", fg=typer.colors.RED
+        )
+        return
+
+    target_path = source_path.with_suffix(".csv")
+    if target_path.exists():
+        if target_path.is_dir():
+            typer.secho(f"tocsv: target path is a directory: {target_path}", fg=typer.colors.RED)
+            return
+        if not force:
+            typer.secho(
+                f"tocsv: target already exists: {target_path}. Use --force to overwrite.",
+                fg=typer.colors.RED,
+            )
+            return
+        try:
+            target_path.unlink()
+        except OSError as e:
+            typer.secho(f"tocsv: cannot overwrite target: {e}", fg=typer.colors.RED)
+            return
+
+    handle_readstat(ctx, [str(source_path), str(target_path)])
+
+
+def handle_qsv_command(ctx: ShellContext, commands: list[list[str]], command_name: str = "qsv") -> bool:
+    """Run a sequence of qsv commands and report standardized errors."""
+    for cmd in commands:
+        try:
+            result = subprocess.run(cmd, cwd=ctx.cwd, check=False)
+        except OSError as e:
+            typer.secho(f"{command_name}: command failed to start: {e}", fg=typer.colors.RED)
+            return False
+
+        if result.returncode != 0:
+            typer.secho(
+                f"{command_name}: step failed with status {result.returncode}: {' '.join(cmd)}",
+                fg=typer.colors.RED,
+            )
+            return False
+
+    return True
+
+
+def handle_qsv_fairify(ctx: ShellContext, args: list[str]):
+    """Run the qsv analysis bundle on a supported data file."""
+    source_arg: str | None = None
+    describe = False
+
+    for arg in args:
+        if arg == "--describe":
+            describe = True
+            continue
+
+        if arg in ("-h", "--help"):
+            typer.echo("Usage: qsv-fairify <input.(csv|parquet|pq)> [--describe]")
+            return
+
+        if arg.startswith("-"):
+            typer.secho(f"qsv-fairify: unknown option: {arg}", fg=typer.colors.RED)
+            return
+
+        if source_arg is not None:
+            typer.secho("qsv-fairify: too many positional arguments", fg=typer.colors.RED)
+            return
+
+        source_arg = arg
+
+    if not source_arg:
+        typer.echo("Usage: qsv-fairify <input.(csv|parquet|pq)> [--describe]")
+        return
+
+    qsv_bin = shutil.which("qsv")
+    if not qsv_bin:
+        typer.secho("qsv-fairify: qsv command not found. Install qsv and try again.", fg=typer.colors.RED)
+        return
+
+    source_path = ctx.resolve(source_arg)
+    if not source_path.exists() or not source_path.is_file():
+        typer.secho(f"qsv-fairify: source file not found: {source_arg}", fg=typer.colors.RED)
+        return
+
+    if not os.access(source_path, os.R_OK):
+        typer.secho(f"qsv-fairify: source file is not readable: {source_arg}", fg=typer.colors.RED)
+        return
+
+    if source_path.suffix.lower() not in SUPPORTED_QSV_FAIRIFY_SUFFIXES:
+        allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_QSV_FAIRIFY_SUFFIXES))
+        typer.secho(
+            f"qsv-fairify: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
+            fg=typer.colors.RED,
+        )
+        return
+
+    if describe and not os.getenv("GEMINI_API_KEY"):
+        typer.secho(
+            "qsv-fairify: GEMINI_API_KEY environment variable is required with --describe.",
+            fg=typer.colors.RED,
+        )
+        return
+
+    base_name = source_path.stem
+    source_filename = source_path.name
+    freqs_file = source_path.with_name(f"{base_name}.freqs.csv")
+    freqs_long_file = source_path.with_name(f"{base_name}.freqs.long.csv")
+    describegpt_file = source_path.with_name(f"{base_name}.description.md")
+    schema_file = source_path.with_name(f"{source_filename}.schema.json")
+    stats_file = source_path.with_name(f"{source_filename}.stats.csv")
+    stats_data_jsonl_file = source_path.with_name(f"{source_filename}.stats.csv.data.jsonl")
+    stats_json_file = source_path.with_name(f"{source_filename}.stats.csv.json")
+
+    commands: list[list[str]] = [
+        [qsv_bin, "index", str(source_path)],
+        [qsv_bin, "stats", "-E", "--stats-jsonl", "--infer-dates", "--infer-boolean", str(source_path)],
+        [qsv_bin, "moarstats", "--advanced", str(source_path)],
+        [qsv_bin, "schema", str(source_path)],
+        [
+            qsv_bin,
+            "frequency",
+            "--limit",
+            "0",
+            "--unq-limit",
+            "1",
+            "--output",
+            str(freqs_file),
+            str(source_path),
+        ],
+        [qsv_bin, "transpose", "--long", "1", "--output", str(freqs_long_file), str(freqs_file)],
+    ]
+
+    should_run_describe = False
+    if describe:
+        if not describegpt_file.exists():
+            should_run_describe = True
+        else:
+            try:
+                should_run_describe = source_path.stat().st_mtime > describegpt_file.stat().st_mtime
+            except OSError:
+                # If metadata cannot be read, prefer regenerating.
+                should_run_describe = True
+
+    if should_run_describe:
+        commands.append(
+            [
+                qsv_bin,
+                "describegpt",
+                str(source_path),
+                "-u",
+                "https://generativelanguage.googleapis.com/v1beta/openai",
+                "-m",
+                "gemini-3-flash-preview",
+                "-k",
+                os.getenv("GEMINI_API_KEY", ""),
+                "--quiet",
+                "--all",
+                "--fresh",
+                "--output",
+                str(describegpt_file),
+            ]
+        )
+
+    if not handle_qsv_command(ctx, commands, command_name="qsv-fairify"):
+        return
+
+    if not ctx.workspace.is_initialized():
+        return
+
+    generated_files = [
+        source_path.with_name(f"{source_path.name}.idx"),
+        schema_file,
+        stats_file,
+        stats_data_jsonl_file,
+        stats_json_file,
+        freqs_file,
+        freqs_long_file,
+    ]
+    if describe:
+        generated_files.append(describegpt_file)
+
+    for file_path in generated_files:
+        if not file_path.exists() or not file_path.is_file():
+            continue
+        if not file_path.is_relative_to(ctx.workspace.path):
+            continue
+        ctx.workspace.scanner.scan_path(file_path)
+
+
 def handle_clear(_ctx: ShellContext, _args: list[str]):
     os.system("cls" if os.name == "nt" else "clear")
 
@@ -662,6 +1081,10 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("init", "Initialize the workspace (use --dirs for standard structure)"),
         ("scan", "Scan workspace and sync to KB (--clean for fresh scan)"),
         ("stats", "Show workspace statistics"),
+        ("readstat", "Proxy to extract_metadata CLI for metadata extraction"),
+        ("metadata", "Extract metadata to JSON (auto-generates .json output)"),
+        ("tocsv", "Convert readstat-supported source files to CSV (--force to overwrite target)"),
+        ("qsv-fairify", "Run qsv index/stats/schema/frequency bundle on csv/parquet (--describe optional)"),
         ("cd", "Change directory"),
         ("ls", "List directory contents (-a, -R, -t pattern, --format, --mime, --uuid, or glob)"),
         ("about", "Show detailed metadata for a file"),
@@ -675,6 +1098,7 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         ("rm", "Remove files/directories"),
         ("clear", "Clear the terminal screen"),
         ("help, ?", "Show this help message"),
+        ("!<shell command>", "Run a direct system shell command in current directory"),
         ("exit, quit", "Exit the shell"),
     ]
     help_text.sort()
@@ -682,6 +1106,21 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
         table.add_row(cmd, desc)
 
     console.print(table)
+
+
+def handle_bang_command(ctx: ShellContext, text: str):
+    """Run direct shell commands prefixed with ! in the current working directory."""
+    shell_command = text[1:].strip()
+    if not shell_command:
+        typer.secho("Shell command missing after '!'.", fg=typer.colors.YELLOW)
+        return
+
+    try:
+        result = subprocess.run(shell_command, cwd=ctx.cwd, check=False, shell=True)
+        if result.returncode != 0:
+            typer.secho(f"Shell command exited with status {result.returncode}", fg=typer.colors.RED)
+    except OSError as e:
+        typer.secho(f"Shell command error: {e}", fg=typer.colors.RED)
 
 
 def display_welcome_banner(ctx: ShellContext):
@@ -723,6 +1162,10 @@ COMMAND_HANDLERS = {
     "init": handle_init,
     "scan": handle_scan,
     "stats": handle_stats,
+    "readstat": handle_readstat,
+    "metadata": handle_metadata,
+    "tocsv": handle_tocsv,
+    "qsv-fairify": handle_qsv_fairify,
     "about": handle_about,
     "cd": handle_cd,
     "ls": handle_ls,
@@ -743,8 +1186,10 @@ COMMAND_HANDLERS = {
 @app.command()
 def interact(path: str = typer.Argument(".", help="Workspace root directory")):
     """Starts the interactive dartfx shell."""
-    ws = Workspace(Path(path))
+    ws, initial_cwd = resolve_shell_workspace(Path(path))
     ctx = ShellContext(ws)
+    if initial_cwd.is_relative_to(ws.path):
+        ctx.cwd = initial_cwd
 
     completer = WordCompleter(COMMANDS, ignore_case=True)
     session: PromptSession = PromptSession(history=InMemoryHistory())
@@ -759,6 +1204,10 @@ def interact(path: str = typer.Argument(".", help="Workspace root directory")):
             text = session.prompt(p, completer=completer)
 
             if not text.strip():
+                continue
+
+            if text.lstrip().startswith("!"):
+                handle_bang_command(ctx, text.lstrip())
                 continue
 
             parts = shlex.split(text)

@@ -64,3 +64,28 @@ def test_workspace_rename_handling(tmp_path):
 
     assert new_file["path"] == "data/renamed.csv"
     assert new_file["uuid"] == orig_uuid  # UUID should be preserved!
+
+
+def test_find_nearest_initialized_path_prefers_closest_ancestor(tmp_path):
+    root = tmp_path / "root"
+    child = root / "child"
+    grandchild = child / "grandchild"
+    grandchild.mkdir(parents=True)
+
+    Workspace.init(root)
+    Workspace.init(child)
+
+    found = Workspace.find_nearest_initialized_path(grandchild)
+    assert found == child.resolve()
+
+
+def test_find_parent_initialized_path_excludes_current_path(tmp_path):
+    parent = tmp_path / "parent"
+    child = parent / "child"
+    child.mkdir(parents=True)
+
+    Workspace.init(parent)
+    Workspace.init(child)
+
+    found = Workspace.find_parent_initialized_path(child)
+    assert found == parent.resolve()
