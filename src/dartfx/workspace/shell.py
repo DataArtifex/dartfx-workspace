@@ -38,9 +38,8 @@ COMMANDS = [
     "scan",
     "stats",
     "readstat",
-    "metadata",
     "tocsv",
-    "qsv-fairify",
+    "fairify",
     "cd",
     "ls",
     "tree",
@@ -125,8 +124,8 @@ def handle_scan(ctx: ShellContext, args: list[str]):
         console.print("[red]Workspace not initialized.[/red]")
         return
 
-    # Check for --clean
-    if "--clean" in args:
+    # Check for full refresh flags
+    if "--clean" in args or "--refresh" in args:
         if typer.confirm("Wipe existing metadata and start a fresh scan?"):
             ctx.workspace.kb.wipe()
             console.print("[yellow]Knowledge Base wiped.[/yellow]")
@@ -614,43 +613,8 @@ def handle_rm(ctx: ShellContext, args: list[str]):
             typer.secho(f"rm error: {e}", fg=typer.colors.RED)
 
 
-def handle_metadata(ctx: ShellContext, args: list[str]):
-    """Extract metadata from a readstat-supported file to JSON."""
-    if not args:
-        typer.echo("Usage: metadata <input.(dta|por|sav|sas7bdat|xpt|zsav)> [output.json]")
-        typer.echo("  If output.json is omitted, defaults to <input>.json")
-        return
-
-    source_arg = args[0]
-    source_path = ctx.resolve(source_arg)
-
-    if not source_path.exists() or not source_path.is_file():
-        typer.secho(f"metadata: source file not found: {source_arg}", fg=typer.colors.RED)
-        return
-
-    if source_path.suffix.lower() not in SUPPORTED_READSTAT_INPUT_SUFFIXES:
-        allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_READSTAT_INPUT_SUFFIXES))
-        typer.secho(
-            f"metadata: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
-            fg=typer.colors.RED,
-        )
-        return
-
-    # Determine output filename
-    if len(args) > 1:
-        output_arg = args[1]
-    else:
-        # Auto-generate <input>.json
-        output_arg = f"{source_arg}.json"
-
-    output_path = ctx.resolve(output_arg)
-
-    # Delegate to readstat
-    handle_readstat(ctx, [str(source_path), str(output_path)])
-
-
 def handle_readstat(ctx: ShellContext, args: list[str]):
-    """Proxy command that routes to readstat or extract_metadata based on arguments."""
+    """Proxy command for readstat conversion/inspection with optional metadata extraction."""
 
     def _resolve_arg(token: str) -> Path:
         p = Path(token)
@@ -660,14 +624,16 @@ def handle_readstat(ctx: ShellContext, args: list[str]):
 
     if not args:
         typer.echo("ReadStat proxy usage:")
-        typer.echo("  readstat <input.(dta|por|sav|sas7bdat|xpt|zsav)>")
-        typer.echo("    View metadata for input file")
-        typer.echo("  readstat --metadata [--force] <input> [output.json]")
-        typer.echo("    Extract metadata to JSON (calls extract_metadata)")
-        typer.echo("  readstat <input> <output.csv>")
-        typer.echo("    Convert to CSV")
-        typer.echo("  readstat <input.sas7bdat> <input.sas7bcat> <output.csv>")
-        typer.echo("    Convert SAS file with catalog to CSV")
+        typer.echo("  Conversion/inspection mode (readstat CLI):")
+        typer.echo("    readstat <input.(dta|por|sav|sas7bdat|xpt|zsav)>")
+        typer.echo("      Show file info")
+        typer.echo("    readstat <input> <output.csv>")
+        typer.echo("      Convert to CSV")
+        typer.echo("    readstat <input.sas7bdat> <input.sas7bcat> <output.csv>")
+        typer.echo("      Convert SAS file with catalog to CSV")
+        typer.echo("  Metadata extraction mode (--metadata):")
+        typer.echo("    readstat --metadata [--force] <input> [output.json]")
+        typer.echo("      Extract metadata to JSON (default: <input>.readstat.json)")
         return
 
     # Check for --metadata flag
@@ -688,6 +654,7 @@ def handle_readstat(ctx: ShellContext, args: list[str]):
 
         if not metadata_args:
             typer.echo("Usage: readstat --metadata [--force] <input> [output.json]")
+            typer.echo("  If output.json is omitted, defaults to <input>.readstat.json")
             return
 
         source_arg = metadata_args[0]
@@ -709,7 +676,7 @@ def handle_readstat(ctx: ShellContext, args: list[str]):
         if len(metadata_args) > 1:
             output_arg = metadata_args[1]
         else:
-            output_arg = f"{source_arg}.json"
+            output_arg = f"{source_arg}.readstat.json"
 
         output_path = _resolve_arg(output_arg)
 
@@ -857,7 +824,7 @@ def handle_qsv_command(ctx: ShellContext, commands: list[list[str]], command_nam
     return True
 
 
-def handle_qsv_fairify(ctx: ShellContext, args: list[str]):
+def handle_fairify(ctx: ShellContext, args: list[str]):
     """Run the qsv analysis bundle on a supported data file."""
     source_arg: str | None = None
     describe = False
@@ -868,48 +835,48 @@ def handle_qsv_fairify(ctx: ShellContext, args: list[str]):
             continue
 
         if arg in ("-h", "--help"):
-            typer.echo("Usage: qsv-fairify <input.(csv|parquet|pq)> [--describe]")
+            typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe]")
             return
 
         if arg.startswith("-"):
-            typer.secho(f"qsv-fairify: unknown option: {arg}", fg=typer.colors.RED)
+            typer.secho(f"fairify: unknown option: {arg}", fg=typer.colors.RED)
             return
 
         if source_arg is not None:
-            typer.secho("qsv-fairify: too many positional arguments", fg=typer.colors.RED)
+            typer.secho("fairify: too many positional arguments", fg=typer.colors.RED)
             return
 
         source_arg = arg
 
     if not source_arg:
-        typer.echo("Usage: qsv-fairify <input.(csv|parquet|pq)> [--describe]")
+        typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe]")
         return
 
     qsv_bin = shutil.which("qsv")
     if not qsv_bin:
-        typer.secho("qsv-fairify: qsv command not found. Install qsv and try again.", fg=typer.colors.RED)
+        typer.secho("fairify: qsv command not found. Install qsv and try again.", fg=typer.colors.RED)
         return
 
     source_path = ctx.resolve(source_arg)
     if not source_path.exists() or not source_path.is_file():
-        typer.secho(f"qsv-fairify: source file not found: {source_arg}", fg=typer.colors.RED)
+        typer.secho(f"fairify: source file not found: {source_arg}", fg=typer.colors.RED)
         return
 
     if not os.access(source_path, os.R_OK):
-        typer.secho(f"qsv-fairify: source file is not readable: {source_arg}", fg=typer.colors.RED)
+        typer.secho(f"fairify: source file is not readable: {source_arg}", fg=typer.colors.RED)
         return
 
     if source_path.suffix.lower() not in SUPPORTED_QSV_FAIRIFY_SUFFIXES:
         allowed = "|".join(ext.lstrip(".") for ext in sorted(SUPPORTED_QSV_FAIRIFY_SUFFIXES))
         typer.secho(
-            f"qsv-fairify: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
+            f"fairify: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
             fg=typer.colors.RED,
         )
         return
 
     if describe and not os.getenv("GEMINI_API_KEY"):
         typer.secho(
-            "qsv-fairify: GEMINI_API_KEY environment variable is required with --describe.",
+            "fairify: GEMINI_API_KEY environment variable is required with --describe.",
             fg=typer.colors.RED,
         )
         return
@@ -974,7 +941,7 @@ def handle_qsv_fairify(ctx: ShellContext, args: list[str]):
             ]
         )
 
-    if not handle_qsv_command(ctx, commands, command_name="qsv-fairify"):
+    if not handle_qsv_command(ctx, commands, command_name="fairify"):
         return
 
     if not ctx.workspace.is_initialized():
@@ -1079,12 +1046,14 @@ def handle_help(_ctx: ShellContext, _args: list[str]):
 
     help_text = [
         ("init", "Initialize the workspace (use --dirs for standard structure)"),
-        ("scan", "Scan workspace and sync to KB (--clean for fresh scan)"),
+        ("scan", "Scan workspace and sync to KB (--clean/--refresh for fresh scan)"),
         ("stats", "Show workspace statistics"),
-        ("readstat", "Proxy to extract_metadata CLI for metadata extraction"),
-        ("metadata", "Extract metadata to JSON (auto-generates .json output)"),
+        (
+            "readstat",
+            "Use readstat CLI for data conversion and metadata extraction (--metadata) for SAS, Stata, and SPSS",
+        ),
         ("tocsv", "Convert readstat-supported source files to CSV (--force to overwrite target)"),
-        ("qsv-fairify", "Run qsv index/stats/schema/frequency bundle on csv/parquet (--describe optional)"),
+        ("fairify", "Run qsv index/stats/schema/frequency bundle on csv/parquet (--describe optional)"),
         ("cd", "Change directory"),
         ("ls", "List directory contents (-a, -R, -t pattern, --format, --mime, --uuid, or glob)"),
         ("about", "Show detailed metadata for a file"),
@@ -1163,9 +1132,8 @@ COMMAND_HANDLERS = {
     "scan": handle_scan,
     "stats": handle_stats,
     "readstat": handle_readstat,
-    "metadata": handle_metadata,
     "tocsv": handle_tocsv,
-    "qsv-fairify": handle_qsv_fairify,
+    "fairify": handle_fairify,
     "about": handle_about,
     "cd": handle_cd,
     "ls": handle_ls,

@@ -41,7 +41,7 @@ uv run dartfx-workspace .
 ```
 
 ### Common Commands:
-- `scan [path]`: Sync the Knowledge Base. Defaults to the current directory and below.
+- `scan [path]`: Sync the Knowledge Base. Use `--clean` or `--refresh` for a full metadata reset and fresh scan.
 - `stats`: Show a high-level breakdown of file types (Data, Code, Docs) and registration status.
 - `ls -l --uuid`: List files with stable UUIDs and registration status (✔/✘).
 - `about <file>`: Show detailed FAIR metadata. Includes a clickable 📂 icon that opens the mirrored storage directory.

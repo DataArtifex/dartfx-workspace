@@ -100,6 +100,56 @@ EXTENSION_MAP: dict[str, tuple[FileType, FileFormat]] = {
 AMBIGUOUS_EXTENSIONS: set[str] = {".txt", ".dat"}
 
 
+def _qsv_fairify_metadata_override(file_path: Path) -> SnifferResult | None:
+    """Classify known qsv/fairify artifacts as metadata.
+
+    Some qsv/fairify outputs intentionally reuse data-looking extensions
+    (e.g. ``freq.csv``), but semantically represent profiling metadata.
+    """
+    name = file_path.name.lower()
+    parent_name = file_path.parent.name.lower()
+
+    # Direct artifact names/suffixes produced by qsv/fairify.
+    if (
+        name == "freq.csv"
+        or name.endswith(".freqs.csv")
+        or name.endswith(".freq.long.csv")
+        or name.endswith(".freqs.long.csv")
+        or name.endswith(".stats.csv")
+        or name.endswith(".stats.csv.data.jsonl")
+        or name.endswith(".stats.csv.json")
+    ):
+        return SnifferResult(
+            file_type=FileType.METADATA,
+            file_format=(
+                FileFormat.JSON
+                if name.endswith(".json")
+                else FileFormat.JSONL
+                if name.endswith(".jsonl")
+                else FileFormat.CSV
+            ),
+            confidence=0.95,
+        )
+
+    # stats CSV can be emitted as a folder containing JSON payload.
+    if name == "data.json" and parent_name.endswith(".stats.csv"):
+        return SnifferResult(
+            file_type=FileType.METADATA,
+            file_format=FileFormat.JSON,
+            confidence=0.95,
+        )
+
+    # qsv index sidecar files should be treated as metadata as well.
+    if name.endswith(".csv.idx"):
+        return SnifferResult(
+            file_type=FileType.METADATA,
+            file_format=FileFormat.UNDETERMINED,
+            confidence=0.95,
+        )
+
+    return None
+
+
 def classify_by_extension(
     file_path: Path,
 ) -> SnifferResult | None:
@@ -110,6 +160,11 @@ def classify_by_extension(
     Returns a SnifferResult if the extension is unambiguous.
     """
     ext = file_path.suffix.lower()
+
+    # Known tool-generated artifacts get domain-specific classification first.
+    qsv_override = _qsv_fairify_metadata_override(file_path)
+    if qsv_override is not None:
+        return qsv_override
 
     # Ambiguous extensions → signal content sniffing needed
     if ext in AMBIGUOUS_EXTENSIONS or ext == "":

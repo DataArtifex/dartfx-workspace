@@ -83,6 +83,80 @@ class TestExtensionClassifier:
         assert result.file_type == FileType.OTHER
         assert result.file_format == FileFormat.UNDETERMINED
 
+    def test_qsv_freq_csv_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "freq.csv"
+        f.write_text("field,value\na,1\n")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.CSV
+
+    def test_qsv_freq_long_csv_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.freq.long.csv"
+        f.write_text("field,value\na,1\n")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.CSV
+
+    def test_qsv_freqs_csv_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.freqs.csv"
+        f.write_text("field,value\na,1\n")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.CSV
+
+    def test_qsv_freqs_long_csv_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.freqs.long.csv"
+        f.write_text("field,value\na,1\n")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.CSV
+
+    def test_qsv_stats_csv_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.stats.csv"
+        f.write_text("field,stat\na,count\n")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.CSV
+
+    def test_qsv_stats_csv_json_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.stats.csv.json"
+        f.write_text('{"summary": true}')
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.JSON
+
+    def test_qsv_stats_csv_data_jsonl_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.stats.csv.data.jsonl"
+        f.write_text('{"summary": true}\n')
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.JSONL
+
+    def test_qsv_stats_csv_data_json_is_metadata(self, tmp_path: Path):
+        stats_dir = tmp_path / "dataset.stats.csv"
+        stats_dir.mkdir()
+        f = stats_dir / "data.json"
+        f.write_text('{"summary": true}')
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.JSON
+
+    def test_qsv_csv_idx_is_metadata(self, tmp_path: Path):
+        f = tmp_path / "dataset.csv.idx"
+        f.write_text("index")
+        result = classify_by_extension(f)
+        assert result is not None
+        assert result.file_type == FileType.METADATA
+        assert result.file_format == FileFormat.UNDETERMINED
+
 
 class TestMagicByteSniffer:
     """Tests for binary signature detection (Step 2)."""

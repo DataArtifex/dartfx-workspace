@@ -25,7 +25,7 @@ Initializes a new workspace by creating the `.dartfx` metadata directory.
 Synchronizes the workspace with the Knowledge Base.
 *   **Context-Aware**: If no path is provided, it scans the **current directory and below**.
 *   **Targeted**: You can specify a target path (e.g., `scan data/raw`) to re-index only that folder.
-*   **Clean**: Use `scan --clean` to wipe existing metadata and start a fresh full-workspace scan.
+*   **Clean / Refresh**: Use `scan --clean` (or `scan --refresh`) to wipe existing metadata and start a fresh full-workspace scan.
 
 ### `about`
 Displays detailed technical and FAIR metadata for a specific resource.

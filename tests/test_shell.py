@@ -9,13 +9,13 @@ from dartfx.workspace.shell import (
     ShellContext,
     handle_about,
     handle_bang_command,
+    handle_fairify,
     handle_help,
     handle_init,
     handle_ls,
-    handle_metadata,
     handle_qsv_command,
-    handle_qsv_fairify,
     handle_readstat,
+    handle_scan,
     handle_tocsv,
     handle_tree,
     resolve_shell_workspace,
@@ -126,6 +126,28 @@ def test_handle_init_rejects_nested_workspace(tmp_path, monkeypatch):
     assert any("cannot initialize nested workspace" in msg for msg in messages)
 
 
+def test_handle_scan_refresh_alias_wipes_and_scans(tmp_path, monkeypatch):
+    ws = Workspace.init(tmp_path)
+    ctx = ShellContext(ws)
+
+    wiped = {"called": False}
+    scanned: list[Path | None] = []
+
+    monkeypatch.setattr(typer, "confirm", lambda _msg: True)
+    monkeypatch.setattr(ws.kb, "wipe", lambda: wiped.__setitem__("called", True))
+
+    def fake_scan(target_path=None, **_kwargs):
+        scanned.append(target_path)
+
+    monkeypatch.setattr(ws.scanner, "scan", fake_scan)
+
+    handle_scan(ctx, ["--refresh", "."])
+
+    assert wiped["called"] is True
+    assert scanned
+    assert scanned[0] == tmp_path.resolve()
+
+
 def test_handle_readstat_shows_usage_without_args(tmp_path, monkeypatch):
     ws = Workspace(tmp_path)
     ctx = ShellContext(ws)
@@ -196,60 +218,6 @@ def test_handle_readstat_preserves_absolute_paths(tmp_path, monkeypatch):
     assert called["check"] is False
 
 
-def test_handle_metadata_extracts_and_registers(tmp_path, monkeypatch):
-    ws = Workspace.init(tmp_path)
-    ctx = ShellContext(ws)
-
-    in_file = tmp_path / "survey.sav"
-    meta_file = tmp_path / "survey.sav.json"
-    in_file.write_text("input")
-    meta_file.write_text('{"metadata": "output"}')
-
-    class _Result:
-        returncode = 0
-
-    registered: list[Path] = []
-
-    def fake_run(_cmd, _cwd, _check):
-        return _Result()
-
-    monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: "/usr/local/bin/extract_metadata")
-    monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", fake_run)
-    monkeypatch.setattr(ws.scanner, "scan_path", lambda p: registered.append(p))
-
-    # Test auto-generation of <filename>.json without explicit output argument
-    handle_metadata(ctx, ["survey.sav"])
-
-    assert registered == [meta_file.resolve()]
-
-
-def test_handle_metadata_with_explicit_output(tmp_path, monkeypatch):
-    ws = Workspace.init(tmp_path)
-    ctx = ShellContext(ws)
-
-    in_file = tmp_path / "survey.sav"
-    custom_meta = tmp_path / "custom_metadata.json"
-    in_file.write_text("input")
-    custom_meta.write_text('{"metadata": "output"}')
-
-    class _Result:
-        returncode = 0
-
-    registered: list[Path] = []
-
-    def fake_run(_cmd, _cwd, _check):
-        return _Result()
-
-    monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: "/usr/local/bin/extract_metadata")
-    monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", fake_run)
-    monkeypatch.setattr(ws.scanner, "scan_path", lambda p: registered.append(p))
-
-    # Test explicit output filename
-    handle_metadata(ctx, ["survey.sav", "custom_metadata.json"])
-
-    assert registered == [custom_meta.resolve()]
-
-
 def test_handle_readstat_forwards_metadata_flag_and_registers_output(tmp_path, monkeypatch):
     """Test readstat --metadata <input> <output> calls extract_metadata."""
     ws = Workspace.init(tmp_path)
@@ -318,12 +286,12 @@ def test_handle_readstat_metadata_with_explicit_output(tmp_path, monkeypatch):
 
 
 def test_handle_readstat_metadata_auto_generates_output(tmp_path, monkeypatch):
-    """Test readstat --metadata <input> auto-generates <input>.json."""
+    """Test readstat --metadata <input> auto-generates <input>.readstat.json."""
     ws = Workspace.init(tmp_path)
     ctx = ShellContext(ws)
 
     in_file = tmp_path / "survey.sav"
-    meta_file = tmp_path / "survey.sav.json"
+    meta_file = tmp_path / "survey.sav.readstat.json"
     in_file.write_text("input")
     meta_file.write_text('{"metadata": "output"}')
 
@@ -357,7 +325,7 @@ def test_handle_readstat_metadata_requires_force_to_overwrite(tmp_path, monkeypa
     ctx = ShellContext(ws)
 
     in_file = tmp_path / "survey.sav"
-    meta_file = tmp_path / "survey.sav.json"
+    meta_file = tmp_path / "survey.sav.readstat.json"
     in_file.write_text("input")
     # Create existing metadata file
     meta_file.write_text('{"old": "metadata"}')
@@ -387,7 +355,7 @@ def test_handle_readstat_metadata_force_overwrites_existing(tmp_path, monkeypatc
     ctx = ShellContext(ws)
 
     in_file = tmp_path / "survey.sav"
-    meta_file = tmp_path / "survey.sav.json"
+    meta_file = tmp_path / "survey.sav.readstat.json"
     in_file.write_text("input")
     # Create existing metadata file with old content
     meta_file.write_text('{"old": "metadata"}')
@@ -631,7 +599,7 @@ def test_handle_bang_command_errors_for_missing_command(tmp_path, monkeypatch):
     assert any("missing" in msg.lower() for msg in messages)
 
 
-def test_handle_qsv_fairify_rejects_unsupported_type(tmp_path, monkeypatch):
+def test_handle_fairify_rejects_unsupported_type(tmp_path, monkeypatch):
     ws = Workspace(tmp_path)
     ctx = ShellContext(ws)
 
@@ -642,12 +610,12 @@ def test_handle_qsv_fairify_rejects_unsupported_type(tmp_path, monkeypatch):
     monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: "/usr/local/bin/qsv")
     monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
 
-    handle_qsv_fairify(ctx, ["data.json"])
+    handle_fairify(ctx, ["data.json"])
 
     assert any("unsupported source type" in msg for msg in messages)
 
 
-def test_handle_qsv_fairify_requires_gemini_key_for_describe(tmp_path, monkeypatch):
+def test_handle_fairify_requires_gemini_key_for_describe(tmp_path, monkeypatch):
     ws = Workspace(tmp_path)
     ctx = ShellContext(ws)
 
@@ -659,12 +627,12 @@ def test_handle_qsv_fairify_requires_gemini_key_for_describe(tmp_path, monkeypat
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
 
-    handle_qsv_fairify(ctx, ["data.csv", "--describe"])
+    handle_fairify(ctx, ["data.csv", "--describe"])
 
     assert any("GEMINI_API_KEY" in msg for msg in messages)
 
 
-def test_handle_qsv_fairify_runs_bundle_and_registers_outputs(tmp_path, monkeypatch):
+def test_handle_fairify_runs_bundle_and_registers_outputs(tmp_path, monkeypatch):
     ws = Workspace.init(tmp_path)
     ctx = ShellContext(ws)
 
@@ -697,7 +665,7 @@ def test_handle_qsv_fairify_runs_bundle_and_registers_outputs(tmp_path, monkeypa
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", fake_run)
     monkeypatch.setattr(ws.scanner, "scan_path", lambda p: registered.append(p))
 
-    handle_qsv_fairify(ctx, ["person.csv"])
+    handle_fairify(ctx, ["person.csv"])
 
     assert [cmd[1] for cmd in called] == ["index", "stats", "moarstats", "schema", "frequency", "transpose"]
     assert registered == [
@@ -711,7 +679,7 @@ def test_handle_qsv_fairify_runs_bundle_and_registers_outputs(tmp_path, monkeypa
     ]
 
 
-def test_handle_qsv_fairify_skips_describegpt_when_output_up_to_date(tmp_path, monkeypatch):
+def test_handle_fairify_skips_describegpt_when_output_up_to_date(tmp_path, monkeypatch):
     ws = Workspace(tmp_path)
     ctx = ShellContext(ws)
 
@@ -737,12 +705,12 @@ def test_handle_qsv_fairify_skips_describegpt_when_output_up_to_date(tmp_path, m
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", fake_run)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
-    handle_qsv_fairify(ctx, ["person.csv", "--describe"])
+    handle_fairify(ctx, ["person.csv", "--describe"])
 
     assert "describegpt" not in [cmd[1] for cmd in called]
 
 
-def test_handle_qsv_fairify_runs_describegpt_when_output_outdated(tmp_path, monkeypatch):
+def test_handle_fairify_runs_describegpt_when_output_outdated(tmp_path, monkeypatch):
     ws = Workspace(tmp_path)
     ctx = ShellContext(ws)
 
@@ -771,7 +739,7 @@ def test_handle_qsv_fairify_runs_describegpt_when_output_outdated(tmp_path, monk
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", fake_run)
     monkeypatch.setenv("GEMINI_API_KEY", "test-key")
 
-    handle_qsv_fairify(ctx, ["person.csv", "--describe"])
+    handle_fairify(ctx, ["person.csv", "--describe"])
 
     assert "describegpt" in [cmd[1] for cmd in called]
     describe_cmd = next(cmd for cmd in called if len(cmd) > 1 and cmd[1] == "describegpt")
@@ -789,7 +757,7 @@ def test_handle_qsv_command_returns_false_on_nonzero_exit(tmp_path, monkeypatch)
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", lambda *_args, **_kwargs: _Result())
     monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
 
-    ok = handle_qsv_command(ctx, [["qsv", "stats", "x.csv"]], command_name="qsv-fairify")
+    ok = handle_qsv_command(ctx, [["qsv", "stats", "x.csv"]], command_name="fairify")
 
     assert ok is False
     assert any("step failed" in msg for msg in messages)
@@ -813,7 +781,7 @@ def test_handle_qsv_command_runs_all_steps_on_success(tmp_path, monkeypatch):
     ok = handle_qsv_command(
         ctx,
         [["qsv", "index", "x.csv"], ["qsv", "stats", "x.csv"]],
-        command_name="qsv-fairify",
+        command_name="fairify",
     )
 
     assert ok is True
