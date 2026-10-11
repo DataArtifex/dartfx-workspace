@@ -1,12 +1,15 @@
 # dartfx-workspace
 
-[![PyPI - Version](https://img.shields.io/pypi/v/dartfx-workspace.svg)](https://pypi.org/project/dartfx-workspace)
-[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/dartfx-workspace.svg)](https://pypi.org/project/dartfx-workspace)
+[![Development Status](https://img.shields.io/badge/status-early%20release-orange.svg)](https://github.com/DataArtifex/dartfx-workspace)
+[![Documentation](https://img.shields.io/badge/docs-blue)](https://www.dataartifex.org/dartfx-workspace/)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask%20DeepWiki-AI%20Docs-5C54E5)](https://deepwiki.com/DataArtifex/dartfx-workspace)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![Package Status](https://img.shields.io/badge/PyPI-not%20published-lightgrey)](https://github.com/DataArtifex/dartfx-workspace)
 [![CI](https://github.com/DataArtifex/dartfx-workspace/actions/workflows/test.yml/badge.svg)](https://github.com/DataArtifex/dartfx-workspace/actions/workflows/test.yml)
-[![License](https://img.shields.io/github/license/DataArtifex/dartfx-workspace.svg)](https://github.com/DataArtifex/dartfx-workspace/blob/main/LICENSE.txt)
-[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Code style: Ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg?logo=ruff&logoColor=D7FF64)](https://github.com/astral-sh/ruff)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
-[![DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/DataArtifex/dartfx-workspace)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.txt)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 **Dartfx Workspace** is a high-performance management tool for data storage areas (workspaces). It focuses on organizing and publishing data commodities aligned with FAIR principles, making them easily consumable by both humans and AI agents.
 
