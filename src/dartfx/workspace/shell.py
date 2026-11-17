@@ -295,7 +295,7 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         except Exception:
             pass
 
-    def _get_item_info(item: Path, display_name: str):
+    def _get_item_info(item: Path, display_name: str) -> tuple[str, str, str, str, str, str, Text]:
         is_dir = item.is_dir()
         rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
         kb_info = kb_files.get(rel_path)
@@ -342,27 +342,28 @@ def handle_ls(ctx: ShellContext, args: list[str]):
         rel_path = item.relative_to(ctx.workspace.path).as_posix() if ctx.workspace.is_initialized() else ""
         kb_info = kb_files.get(rel_path)
 
-        info = list(_get_item_info(item, display_name))
+        mode, size_str, mtime, registered, file_type, file_uuid, name_part = _get_item_info(item, display_name)
 
         if type_regex:
-            if not type_regex.search(info[4]):
+            if not type_regex.search(file_type):
                 continue
 
         if format_regex:
-            fmt = kb_info.get("file_format", "-") if kb_info else "-"
+            fmt = (kb_info.get("file_format") or "-") if kb_info else "-"
             if not format_regex.search(fmt):
                 continue
 
         if mime_regex:
-            mt = kb_info.get("mime_type", "-") if kb_info else "-"
-            if mt is None:
-                mt = "-"
+            mt = (kb_info.get("mime_type") or "-") if kb_info else "-"
             if not mime_regex.search(mt):
                 continue
 
-        if not show_uuid:
-            info.pop(5)
-        table.add_row(*info)
+        row = (
+            [mode, size_str, mtime, registered, file_type, file_uuid, name_part]
+            if show_uuid
+            else [mode, size_str, mtime, registered, file_type, name_part]
+        )
+        table.add_row(*row)
 
     console.print(table)
 
