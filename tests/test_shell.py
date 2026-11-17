@@ -115,7 +115,7 @@ def test_handle_init_rejects_nested_workspace(tmp_path, monkeypatch):
 
     messages: list[str] = []
 
-    def fake_secho(message: str, _fg=None):
+    def fake_secho(message: str, *args, **kwargs):
         messages.append(message)
 
     monkeypatch.setattr(typer, "secho", fake_secho)
@@ -233,7 +233,7 @@ def test_handle_readstat_forwards_metadata_flag_and_registers_output(tmp_path, m
 
     registered: list[Path] = []
 
-    def fake_run(_cmd, _cwd, _check):
+    def fake_run(*args, **kwargs):
         # Simulate extract_metadata creating/updating output file
         meta_file.write_text('{"new": "metadata"}')
         return _Result()
@@ -266,7 +266,7 @@ def test_handle_readstat_metadata_with_explicit_output(tmp_path, monkeypatch):
 
     registered: list[Path] = []
 
-    def fake_run(_cmd, _cwd, _check):
+    def fake_run(*args, **kwargs):
         # Simulate extract_metadata creating/updating output file
         custom_meta.write_text('{"new": "metadata"}')
         return _Result()
@@ -300,7 +300,7 @@ def test_handle_readstat_metadata_auto_generates_output(tmp_path, monkeypatch):
 
     registered: list[Path] = []
 
-    def fake_run(_cmd, _cwd, _check):
+    def fake_run(*args, **kwargs):
         # Simulate extract_metadata creating/updating output file
         meta_file.write_text('{"new": "metadata"}')
         return _Result()
@@ -340,7 +340,7 @@ def test_handle_readstat_metadata_requires_force_to_overwrite(tmp_path, monkeypa
         lambda bin: "/usr/local/bin/extract_metadata" if bin == "extract_metadata" else "/usr/local/bin/readstat",
     )
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", lambda *_args, **_kwargs: _Result())
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     # Try without --force (should fail)
     handle_readstat(ctx, ["--metadata", "survey.sav"])
@@ -366,7 +366,7 @@ def test_handle_readstat_metadata_force_overwrites_existing(tmp_path, monkeypatc
 
     registered: list[Path] = []
 
-    def fake_run(_cmd, _cwd, _check):
+    def fake_run(*args, **kwargs):
         # Simulate extract_metadata creating new file with new content
         import time
 
@@ -405,7 +405,7 @@ def test_handle_readstat_metadata_subprocess_args(tmp_path, monkeypatch):
 
     captured_cmd = None
 
-    def fake_run(cmd, _cwd, _check):
+    def fake_run(cmd, *args, **kwargs):
         nonlocal captured_cmd
         captured_cmd = cmd
         return _Result()
@@ -435,7 +435,7 @@ def test_handle_readstat_errors_when_binary_missing(tmp_path, monkeypatch):
 
     # Both readstat and extract_metadata are missing
     monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: None)
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     # Test view case (no --metadata, no output) - should try readstat
     handle_readstat(ctx, ["input.sav"])
@@ -516,7 +516,7 @@ def test_handle_tocsv_rejects_unsupported_extensions(tmp_path, monkeypatch):
     src.write_text("input")
 
     messages: list[str] = []
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     handle_tocsv(ctx, ["notes.txt"])
 
@@ -535,7 +535,7 @@ def test_handle_tocsv_requires_force_when_target_exists(tmp_path, monkeypatch):
     delegated: list[list[str]] = []
     messages: list[str] = []
     monkeypatch.setattr("dartfx.workspace.shell.handle_readstat", lambda _ctx, argv: delegated.append(argv))
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     handle_tocsv(ctx, ["sample.dta"])
 
@@ -592,7 +592,7 @@ def test_handle_bang_command_errors_for_missing_command(tmp_path, monkeypatch):
     ctx = ShellContext(ws)
 
     messages: list[str] = []
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     handle_bang_command(ctx, "!")
 
@@ -608,7 +608,7 @@ def test_handle_fairify_rejects_unsupported_type(tmp_path, monkeypatch):
 
     messages: list[str] = []
     monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: "/usr/local/bin/qsv")
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     handle_fairify(ctx, ["data.json"])
 
@@ -625,7 +625,7 @@ def test_handle_fairify_requires_gemini_key_for_describe(tmp_path, monkeypatch):
     messages: list[str] = []
     monkeypatch.setattr("dartfx.workspace.shell.shutil.which", lambda _: "/usr/local/bin/qsv")
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     handle_fairify(ctx, ["data.csv", "--describe"])
 
@@ -645,7 +645,7 @@ def test_handle_fairify_runs_bundle_and_registers_outputs(tmp_path, monkeypatch)
     class _Result:
         returncode = 0
 
-    def fake_run(cmd, _cwd, _check):
+    def fake_run(cmd, *args, **kwargs):
         called.append(cmd)
         if cmd[1] == "index":
             source.with_name(f"{source.name}.idx").write_text("idx")
@@ -697,7 +697,7 @@ def test_handle_fairify_skips_describegpt_when_output_up_to_date(tmp_path, monke
     class _Result:
         returncode = 0
 
-    def fake_run(cmd, _cwd, _check):
+    def fake_run(cmd, *args, **kwargs):
         called.append(cmd)
         return _Result()
 
@@ -731,7 +731,7 @@ def test_handle_fairify_runs_describegpt_when_output_outdated(tmp_path, monkeypa
     class _Result:
         returncode = 0
 
-    def fake_run(cmd, _cwd, _check):
+    def fake_run(cmd, *args, **kwargs):
         called.append(cmd)
         return _Result()
 
@@ -755,7 +755,7 @@ def test_handle_qsv_command_returns_false_on_nonzero_exit(tmp_path, monkeypatch)
 
     messages: list[str] = []
     monkeypatch.setattr("dartfx.workspace.shell.subprocess.run", lambda *_args, **_kwargs: _Result())
-    monkeypatch.setattr(typer, "secho", lambda msg, _fg=None: messages.append(msg))
+    monkeypatch.setattr(typer, "secho", lambda msg, *args, **kwargs: messages.append(msg))
 
     ok = handle_qsv_command(ctx, [["qsv", "stats", "x.csv"]], command_name="fairify")
 
@@ -772,7 +772,7 @@ def test_handle_qsv_command_runs_all_steps_on_success(tmp_path, monkeypatch):
     class _Result:
         returncode = 0
 
-    def fake_run(cmd, _cwd, _check):
+    def fake_run(cmd, *args, **kwargs):
         called.append(cmd)
         return _Result()
 
