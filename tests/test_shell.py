@@ -198,8 +198,8 @@ def test_handle_readstat_preserves_absolute_paths(tmp_path, monkeypatch):
     class _Result:
         returncode = 0
 
-    absolute_input = Path("/tmp/input.sav")
-    absolute_output = Path("/tmp/output.csv")
+    absolute_input = (tmp_path.parent / "input.sav").resolve()
+    absolute_output = (tmp_path.parent / "output.csv").resolve()
 
     def fake_run(cmd, cwd, check):
         called["cmd"] = cmd
