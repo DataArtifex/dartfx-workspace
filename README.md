@@ -85,6 +85,7 @@ hatch run docs:build
 - [x] Phase 1: Core Workspace Management & Shell.
 - [ ] Phase 2: Data Product Management & DCAT Integration.
 - [ ] Phase 3: Advanced Inference Engines & Data Provenance.
+- [ ] Phase 4: Workspace API Service (`dartfx-workspace-api`).
 
 ## 🤝 Contributing
 

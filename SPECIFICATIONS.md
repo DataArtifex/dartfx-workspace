@@ -262,3 +262,26 @@ A `space` is a virtual storage area that groups workspaces and can be used to:
 - control access to the underlying workspace
 - limit the total amount of storage used by its underlying workspace
 - report on content
+
+### Workspace API Service (dartfx-workspace-api)
+
+A standalone FastAPI service will be created (scaffolded from the `dartfx-foo-api` template) to expose workspace management, metadata discovery, and analytical pipelines over HTTP/REST and SPARQL for integration with web applications, external catalogs, and AI agents.
+
+#### Architecture & Decoupling
+- **`dartfx-workspace`**: Remains the foundational Python toolkit, domain model layer, and interactive CLI/shell.
+- **`dartfx-workspace-api`**: Acts as a decoupled service layer importing `dartfx-workspace`. It encapsulates HTTP routing, OpenAPI documentation, authentication/authorization, and container deployment (Docker/Compose, Kong/Nginx gateway).
+
+#### Key API Capabilities
+- **Workspace & Space Management**:
+  - `GET /spaces`, `GET /workspaces`: Register, list, and monitor managed workspaces and aggregated spaces.
+  - `GET /workspaces/{id}/stats`: Retrieve high-level workspace statistics, file categorization, and registration health.
+- **Inventory & Metadata Discovery**:
+  - `GET /workspaces/{id}/files`: Browse and search the file catalog with rich filters (type, format, MIME, registration status).
+  - `GET /workspaces/{id}/resources/{uuid}`: Fetch comprehensive FAIR metadata for a specific resource.
+  - `GET /workspaces/{id}/resources/{uuid}/rdf`: Export resource metadata in standard RDF serializations (Turtle, JSON-LD).
+- **Asynchronous Operations**:
+  - `POST /workspaces/{id}/scan`: Trigger background workspace scanning, change detection, and Knowledge Base synchronization.
+  - `POST /workspaces/{id}/fairify`: Queue automated `qsv` profiling and AI documentation (`describegpt`) jobs.
+- **Graph & Analytical Querying**:
+  - `POST /workspaces/{id}/sparql`: Execute SPARQL queries against the workspace RDF graph (bridged to in-memory `rdflib` or persistent engines like Oxigraph/Qlever).
+  - `POST /workspaces/{id}/query`: Run analytical queries against tabular files using embedded DuckDB.
