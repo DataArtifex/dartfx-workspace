@@ -341,12 +341,23 @@ def run_fairify_task(
         if describe:
             generated_files.append(describegpt_file)
 
+        source_uuid: str | None = None
+        if ws.is_initialized() and source_path.is_relative_to(ws.path):
+            s_rec = ws.kb.get_file_by_path(source_path.relative_to(ws.path).as_posix())
+            if s_rec:
+                source_uuid = s_rec.get("uuid")
+
         indexed_rel_paths: list[str] = []
         for file_path in generated_files:
             if not file_path.exists() or not file_path.is_file():
                 continue
             if ws.is_initialized() and file_path.is_relative_to(ws.path):
-                ws.scanner.scan_path(file_path, is_generated=True, generated_by="qsv")
+                ws.scanner.scan_path(
+                    file_path,
+                    is_generated=True,
+                    generated_by="qsv",
+                    source_uuid=source_uuid,
+                )
             if file_path.is_relative_to(ws.path):
                 indexed_rel_paths.append(file_path.relative_to(ws.path).as_posix())
 
@@ -465,11 +476,22 @@ def run_readstat_task(
             err_detail = (proc.stderr or proc.stdout or "").strip()
             raise RuntimeError(f"readstat exited with status {proc.returncode}: {err_detail}")
 
+        source_uuid: str | None = None
+        if ws.is_initialized() and source_path.is_relative_to(ws.path):
+            s_rec = ws.kb.get_file_by_path(source_path.relative_to(ws.path).as_posix())
+            if s_rec:
+                source_uuid = s_rec.get("uuid")
+
         indexed_output: str | None = None
         if out_path is not None and out_path.exists() and out_path.is_file():
             if ws.is_initialized() and out_path.is_relative_to(ws.path):
                 gen_flag = True if extract_metadata else False
-                ws.scanner.scan_path(out_path, is_generated=gen_flag, generated_by="readstat")
+                ws.scanner.scan_path(
+                    out_path,
+                    is_generated=gen_flag,
+                    generated_by="readstat",
+                    source_uuid=source_uuid if gen_flag else None,
+                )
             if out_path.is_relative_to(ws.path):
                 indexed_output = out_path.relative_to(ws.path).as_posix()
 

@@ -3,9 +3,10 @@ Workspace scanning and file profiling using BLAKE3 hashes.
 """
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path
+from uuid import UUID
 
 import blake3
 
@@ -93,6 +94,7 @@ class Scanner:
                 if old_f.get("is_generated"):
                     is_gen = True
                     gen_by = old_f.get("generated_by") or gen_by
+                source_uuid = old_f.get("source_uuid")
                 if old_f["blake3_hash"] != b3hash or old_f["size_bytes"] != size or old_f.get("is_generated") != is_gen:
                     self.kb.upsert_file_resource(
                         uuid.UUID(old_f["uuid"]),
@@ -107,10 +109,12 @@ class Scanner:
                         attributes=attributes,
                         is_generated=is_gen,
                         generated_by=gen_by,
+                        source_uuid=source_uuid,
                     )
             else:
                 # Path not tracked, check if renamed
                 uuid_to_use = uuid.uuid4()
+                source_uuid = None
                 if b3hash in existing_hash_map:
                     suspected_old_file = existing_hash_map[b3hash]
                     old_path_p = self.workspace_path / suspected_old_file["path"]
@@ -120,6 +124,7 @@ class Scanner:
                         if suspected_old_file.get("is_generated"):
                             is_gen = True
                             gen_by = suspected_old_file.get("generated_by") or gen_by
+                        source_uuid = suspected_old_file.get("source_uuid")
                         del existing_hash_map[b3hash]
 
                 self.kb.upsert_file_resource(
@@ -135,6 +140,7 @@ class Scanner:
                     attributes=attributes,
                     is_generated=is_gen,
                     generated_by=gen_by,
+                    source_uuid=source_uuid,
                 )
 
         self.kb.save()
@@ -163,17 +169,28 @@ class Scanner:
         *,
         is_generated: bool | None = None,
         generated_by: str | None = None,
+        source_uuid: UUID | str | None = None,
     ):
         """Perform targeted profiling and indexing for a single path (file or directory)."""
         if not path.exists():
             return
 
         if path.is_file():
-            self._scan_single_file(path, is_generated=is_generated, generated_by=generated_by)
+            self._scan_single_file(
+                path,
+                is_generated=is_generated,
+                generated_by=generated_by,
+                source_uuid=source_uuid,
+            )
         else:
             for p in path.rglob("*"):
                 if p.is_file():
-                    self._scan_single_file(p, is_generated=is_generated, generated_by=generated_by)
+                    self._scan_single_file(
+                        p,
+                        is_generated=is_generated,
+                        generated_by=generated_by,
+                        source_uuid=source_uuid,
+                    )
 
     def _scan_single_file(
         self,
@@ -181,6 +198,7 @@ class Scanner:
         *,
         is_generated: bool | None = None,
         generated_by: str | None = None,
+        source_uuid: UUID | str | None = None,
     ):
         """Helper to scan just one file and update KB."""
         rel_parts = p.relative_to(self.workspace_path).parts
@@ -204,6 +222,7 @@ class Scanner:
         # Resolve is_generated and generated_by
         resolved_gen = is_generated
         resolved_by = generated_by
+        resolved_source_uuid = source_uuid
         if resolved_gen is None:
             if existing_info and existing_info.get("is_generated"):
                 resolved_gen = True
@@ -213,11 +232,15 @@ class Scanner:
                 resolved_gen = detected_gen
                 resolved_by = detected_by or resolved_by
 
+        if resolved_source_uuid is None and existing_info:
+            resolved_source_uuid = existing_info.get("source_uuid")
+
         if existing_info:
             if (
                 existing_info["blake3_hash"] != b3hash
                 or existing_info["size_bytes"] != size
                 or existing_info.get("is_generated") != resolved_gen
+                or existing_info.get("source_uuid") != (str(resolved_source_uuid) if resolved_source_uuid else None)
             ):
                 self.kb.upsert_file_resource(
                     uuid.UUID(existing_info["uuid"]),
@@ -232,6 +255,7 @@ class Scanner:
                     attributes=attributes,
                     is_generated=bool(resolved_gen),
                     generated_by=resolved_by,
+                    source_uuid=resolved_source_uuid,
                 )
         else:
             self.kb.upsert_file_resource(
@@ -247,59 +271,94 @@ class Scanner:
                 attributes=attributes,
                 is_generated=bool(resolved_gen),
                 generated_by=resolved_by,
+                source_uuid=resolved_source_uuid,
             )
 
-    def handle_move(self, src: Path, actual_dst: Path):
-        """Optimized targeted metadata update for moved/renamed files or directories."""
-        src_rel = src.relative_to(self.workspace_path).as_posix()
-        dst_rel = actual_dst.relative_to(self.workspace_path).as_posix()
+    def handle_moves(self, moves: Sequence[tuple[Path, Path]]):
+        """Optimized targeted metadata update for multiple moved/renamed files or directories."""
+        if not moves:
+            return
+
+        resolved_moves: list[tuple[str, str]] = []
+        for src, dst in moves:
+            try:
+                resolved_moves.append(
+                    (
+                        src.relative_to(self.workspace_path).as_posix(),
+                        dst.relative_to(self.workspace_path).as_posix(),
+                    )
+                )
+            except ValueError:
+                pass
+
+        if not resolved_moves:
+            return
 
         all_files = self.kb.get_all_files()
         for f in all_files:
             f_path = f["path"]
-            if f_path == src_rel or f_path.startswith(src_rel + "/"):
-                try:
-                    rel_to_src = Path(f_path).relative_to(src_rel)
-                    new_rel = (Path(dst_rel) / rel_to_src).as_posix()
-                except ValueError:
-                    continue
+            for src_rel, dst_rel in resolved_moves:
+                if f_path == src_rel or f_path.startswith(src_rel + "/"):
+                    try:
+                        rel_to_src = Path(f_path).relative_to(src_rel)
+                        new_rel = (Path(dst_rel) / rel_to_src).as_posix()
+                    except ValueError:
+                        continue
 
-                new_path_obj = self.workspace_path / new_rel
+                    new_path_obj = self.workspace_path / new_rel
+                    if not new_path_obj.exists():
+                        continue
 
-                file_type, file_format, mime_type, attributes = self._sniff(new_path_obj)
-                try:
-                    stat = new_path_obj.stat()
-                    created = datetime.fromtimestamp(stat.st_ctime)
-                    updated = datetime.fromtimestamp(stat.st_mtime)
-                except OSError:
-                    continue
+                    file_type, file_format, mime_type, attributes = self._sniff(new_path_obj)
+                    try:
+                        stat = new_path_obj.stat()
+                        created = datetime.fromtimestamp(stat.st_ctime)
+                        updated = datetime.fromtimestamp(stat.st_mtime)
+                    except OSError:
+                        continue
 
-                self.kb.upsert_file_resource(
-                    uuid.UUID(f["uuid"]),
-                    new_path_obj.relative_to(self.workspace_path),
-                    f["size_bytes"],
-                    f["blake3_hash"],
-                    file_type,
-                    created,
-                    updated,
-                    file_format=file_format,
-                    mime_type=mime_type,
-                    attributes=attributes,
-                    is_generated=f.get("is_generated", False),
-                    generated_by=f.get("generated_by"),
-                )
+                    self.kb.upsert_file_resource(
+                        uuid.UUID(f["uuid"]),
+                        new_path_obj.relative_to(self.workspace_path),
+                        f["size_bytes"],
+                        f["blake3_hash"],
+                        file_type,
+                        created,
+                        updated,
+                        file_format=file_format,
+                        mime_type=mime_type,
+                        attributes=attributes,
+                        is_generated=f.get("is_generated", False),
+                        generated_by=f.get("generated_by"),
+                        source_uuid=f.get("source_uuid"),
+                    )
+                    break
 
         # Crucial: Save the graph after mass-moving resources
         self.kb.save()
 
-    def handle_remove(self, target: Path):
+    def handle_move(self, src: Path, actual_dst: Path):
+        """Optimized targeted metadata update for moved/renamed files or directories."""
+        self.handle_moves([(src, actual_dst)])
+
+    def handle_remove(self, target: Path | Sequence[Path]):
         """Targeted removal of file or directory records from KB."""
-        target_rel = target.relative_to(self.workspace_path).as_posix()
+        targets: list[Path] = [target] if isinstance(target, Path) else list(target)
+        target_rels: set[str] = set()
+        for t in targets:
+            try:
+                target_rels.add(t.relative_to(self.workspace_path).as_posix())
+            except ValueError:
+                pass
+
+        if not target_rels:
+            return
+
         all_files = self.kb.get_all_files()
 
         for f in all_files:
             f_path = f["path"]
-            if f_path == target_rel or f_path.startswith(target_rel + "/"):
+            if any(f_path == tr or f_path.startswith(tr + "/") for tr in target_rels):
                 self.kb.remove_file_resource(uuid.UUID(f["uuid"]))
 
         # Crucial: Save the graph after mass-removing resources

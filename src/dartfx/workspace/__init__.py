@@ -31,6 +31,17 @@ from dartfx.workspace.models import (
     WorkspaceConfig,
     WorkspaceStats,
 )
+from dartfx.workspace.policy import (
+    IngestionPolicy,
+    IngestionPolicyViolationError,
+    PolicyEvaluator,
+    PolicyViolationError,
+    RenameMode,
+    RenamePolicy,
+    RenamePolicyViolationError,
+    WorkspaceSettings,
+    ZoneRule,
+)
 from dartfx.workspace.spaces import Space
 from dartfx.workspace.tasks import (
     detect_installed_tools,
@@ -56,8 +67,15 @@ __all__ = [
     "FileResource",
     "FileType",
     "FileTypeStats",
+    "IngestionPolicy",
+    "IngestionPolicyViolationError",
+    "PolicyEvaluator",
+    "PolicyViolationError",
     "Principal",
     "QuotaExceededError",
+    "RenameMode",
+    "RenamePolicy",
+    "RenamePolicyViolationError",
     "ResourceDetail",
     "Space",
     "SpaceConfig",
@@ -73,7 +91,9 @@ __all__ = [
     "WorkspaceAccessDeniedError",
     "WorkspaceConfig",
     "WorkspacePathTraversalError",
+    "WorkspaceSettings",
     "WorkspaceStats",
+    "ZoneRule",
     "detect_installed_tools",
     "hello",
     "run_fairify_task",

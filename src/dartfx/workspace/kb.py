@@ -120,6 +120,7 @@ class KnowledgeBase:
         attributes: dict[str, str] | None = None,
         is_generated: bool = False,
         generated_by: str | None = None,
+        source_uuid: UUID | str | None = None,
     ):
         """Adds or updates a file resource within the RDF graph."""
         uri = self.get_resource_uri(uuid)
@@ -154,6 +155,9 @@ class KnowledgeBase:
         self.graph.add((uri, DARTFX.isGenerated, Literal(is_generated, datatype=XSD.boolean)))
         if generated_by:
             self.graph.add((uri, DARTFX.generatedBy, Literal(generated_by)))
+        if source_uuid:
+            self.graph.add((uri, DARTFX.sourceUuid, Literal(str(source_uuid))))
+            self.graph.add((uri, DCTERMS.source, URIRef(f"urn:uuid:{source_uuid}")))
 
         # Metrics
         self.graph.add((uri, DARTFX.sizeBytes, Literal(size_bytes, datatype=XSD.integer)))
@@ -193,7 +197,8 @@ class KnowledgeBase:
     _FILE_SELECT_QUERY = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?mime ?created ?modified ?is_generated ?generated_by
+        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?mime ?created ?modified
+               ?is_generated ?generated_by ?source_uuid
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -207,6 +212,7 @@ class KnowledgeBase:
             OPTIONAL { ?uri dartfx:mimeType ?mime . }
             OPTIONAL { ?uri dartfx:isGenerated ?is_generated . }
             OPTIONAL { ?uri dartfx:generatedBy ?generated_by . }
+            OPTIONAL { ?uri dartfx:sourceUuid ?source_uuid . }
         }
         """
 
@@ -225,6 +231,11 @@ class KnowledgeBase:
         else:
             _, generated_by = detect_system_generated(target_path)
 
+        source_uuid_val = getattr(row, "source_uuid", None)
+        source_uuid = (
+            str(source_uuid_val).strip() if source_uuid_val is not None and str(source_uuid_val).strip() else None
+        )
+
         return {
             "uuid": str(row.uuid),
             "path": target_path,
@@ -237,7 +248,13 @@ class KnowledgeBase:
             "updated_at": str(row.modified),
             "is_generated": is_generated,
             "generated_by": generated_by,
+            "source_uuid": source_uuid,
         }
+
+    def get_artifacts_for_source(self, source_uuid: UUID | str) -> list[dict[str, Any]]:
+        """Return all registered artifact records derived from the given source file UUID."""
+        target = str(source_uuid)
+        return [f for f in self.get_all_files() if f.get("source_uuid") == target]
 
     def get_file_by_path(self, path_str: str) -> dict[str, Any] | None:
         """Looks up a file resource efficiently using its path."""

@@ -564,19 +564,30 @@ def handle_mv(ctx: ShellContext, args: list[str]):
     if len(args) < 2:
         typer.secho("mv: missing operand", fg=typer.colors.RED)
         return
-    src = ctx.resolve(args[0])
-    dst = ctx.resolve(args[1])
+    src = Path(args[0]) if Path(args[0]).is_absolute() and Path(args[0]).exists() else ctx.resolve(args[0])
+    dst = Path(args[1]) if Path(args[1]).is_absolute() and Path(args[1]).exists() else ctx.resolve(args[1])
 
-    if dst.is_dir():
-        actual_dst = dst / src.name
-    else:
-        actual_dst = dst
+    if not src.exists():
+        typer.secho(f"mv: cannot stat '{args[0]}': No such file or directory", fg=typer.colors.RED)
+        return
 
     try:
-        shutil.move(str(src), str(dst))
-        # If workspace is initialized, track targeted move
-        if ctx.workspace.is_initialized():
-            ctx.workspace.scanner.handle_move(src, actual_dst)
+        if (
+            ctx.workspace.is_initialized()
+            and src.is_relative_to(ctx.workspace.path)
+            and dst.is_relative_to(ctx.workspace.path)
+        ):
+            src_rel = src.relative_to(ctx.workspace.path).as_posix()
+            dst_rel = dst.relative_to(ctx.workspace.path).as_posix()
+            ctx.workspace.move_path(src_rel, dst_rel, cascade_artifacts=True)
+        else:
+            if dst.is_dir():
+                actual_dst = dst / src.name
+            else:
+                actual_dst = dst
+            shutil.move(str(src), str(dst))
+            if ctx.workspace.is_initialized():
+                ctx.workspace.scanner.handle_move(src, actual_dst)
     except Exception as e:
         typer.secho(f"mv error: {e}", fg=typer.colors.RED)
 
@@ -608,16 +619,23 @@ def handle_rm(ctx: ShellContext, args: list[str]):
     for a in args:
         if a in ["-r", "-rf"]:
             continue
-        p = ctx.resolve(a)
+        p = Path(a) if Path(a).is_absolute() and Path(a).exists() else ctx.resolve(a)
         if not p.exists():
             continue
         try:
-            if p.is_dir():
-                shutil.rmtree(p)
+            if ctx.workspace.is_initialized() and p.is_relative_to(ctx.workspace.path):
+                rel = p.relative_to(ctx.workspace.path).as_posix()
+                removed = ctx.workspace.remove_path(rel)
+                if len(removed) > 1:
+                    typer.secho(
+                        f"Removed '{p.name}' and {len(removed) - 1} related system-generated artifact(s).",
+                        fg=typer.colors.GREEN,
+                    )
             else:
-                p.unlink()
-            if ctx.workspace.is_initialized():
-                ctx.workspace.scanner.handle_remove(p)
+                if p.is_dir():
+                    shutil.rmtree(p)
+                else:
+                    p.unlink()
         except Exception as e:
             typer.secho(f"rm error: {e}", fg=typer.colors.RED)
 

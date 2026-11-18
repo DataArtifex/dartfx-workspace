@@ -13,8 +13,10 @@ from dartfx.workspace.shell import (
     handle_help,
     handle_init,
     handle_ls,
+    handle_mv,
     handle_qsv_command,
     handle_readstat,
+    handle_rm,
     handle_scan,
     handle_tocsv,
     handle_tree,
@@ -786,3 +788,49 @@ def test_handle_qsv_command_runs_all_steps_on_success(tmp_path, monkeypatch):
 
     assert ok is True
     assert [cmd[1] for cmd in called] == ["index", "stats"]
+
+
+def test_handle_rm_with_artifacts(tmp_path):
+    ws = Workspace.init(tmp_path, create_dirs=True)
+    ctx = ShellContext(ws)
+
+    data_file = tmp_path / "data" / "metrics.csv"
+    data_file.write_text("a,b\n1,2\n")
+    stats_file = tmp_path / "data" / "metrics.csv.stats.csv"
+    stats_file.write_text("stats")
+
+    ws.scan()
+    assert len(ws.kb.get_all_files()) == 2
+
+    handle_rm(ctx, [str(data_file)])
+
+    assert not data_file.exists()
+    assert not stats_file.exists()
+    assert len(ws.kb.get_all_files()) == 0
+
+
+def test_handle_mv_with_artifacts(tmp_path):
+    ws = Workspace.init(tmp_path, create_dirs=True)
+    ctx = ShellContext(ws)
+
+    data_file = tmp_path / "data" / "metrics.csv"
+    data_file.write_text("a,b\n1,2\n")
+    stats_file = tmp_path / "data" / "metrics.csv.stats.csv"
+    stats_file.write_text("stats")
+
+    ws.scan()
+    assert len(ws.kb.get_all_files()) == 2
+
+    handle_mv(ctx, ["data/metrics.csv", "data/renamed.csv"])
+
+    renamed_data = tmp_path / "data" / "renamed.csv"
+    renamed_stats = tmp_path / "data" / "renamed.csv.stats.csv"
+
+    assert renamed_data.exists()
+    assert renamed_stats.exists()
+    assert not data_file.exists()
+    assert not stats_file.exists()
+
+    kb_paths = {f["path"] for f in ws.kb.get_all_files()}
+    assert "data/renamed.csv" in kb_paths
+    assert "data/renamed.csv.stats.csv" in kb_paths

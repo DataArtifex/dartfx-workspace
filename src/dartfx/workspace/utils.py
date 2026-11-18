@@ -3,6 +3,7 @@ General utilities and provenance/applicability helpers for dartfx-workspace.
 """
 
 from pathlib import Path
+from typing import Any
 
 SYSTEM_GENERATED_PATTERNS: tuple[tuple[str, str], ...] = (
     (".stats.csv.data.jsonl", "qsv"),
@@ -93,6 +94,10 @@ def get_fairify_artifacts(source_path: Path | str) -> list[Path]:
     candidates = [
         parent / f"{name}.stats.csv",
         parent / f"{base}.stats.csv",
+        parent / f"{name}.stats.csv.data.jsonl",
+        parent / f"{base}.stats.csv.data.jsonl",
+        parent / f"{name}.stats.csv.json",
+        parent / f"{base}.stats.csv.json",
         parent / f"{name}.schema.json",
         parent / f"{base}.schema.json",
         parent / f"{base}.freqs.csv",
@@ -111,6 +116,88 @@ def get_fairify_artifacts(source_path: Path | str) -> list[Path]:
             seen.add(c)
             existing.append(c)
     return existing
+
+
+def get_related_artifacts(
+    source_path: Path | str,
+    kb_files: list[dict[str, Any]] | None = None,
+    workspace_root: Path | None = None,
+) -> list[Path]:
+    """
+    Return all existing candidate system-generated artifact paths (FAIRify and ReadStat metadata)
+    associated with a given source file. Supports both Knowledge Base UID/derivation lookup
+    and filesystem pattern conventions.
+    """
+    p = Path(source_path)
+    base = p.stem
+    name = p.name
+    parent = p.parent
+
+    existing = list(get_fairify_artifacts(p))
+    seen = set(existing)
+
+    readstat_candidates = [
+        parent / f"{name}.readstat.json",
+        parent / f"{base}.readstat.json",
+    ]
+    for c in readstat_candidates:
+        if c.exists() and c not in seen:
+            seen.add(c)
+            existing.append(c)
+
+    # If KB records are supplied, also resolve any artifacts explicitly derived via source_uuid
+    if kb_files is not None and workspace_root is not None:
+        try:
+            rel_source = p.relative_to(workspace_root).as_posix()
+            source_rec = next((f for f in kb_files if f.get("path") == rel_source), None)
+            if source_rec and source_rec.get("uuid"):
+                s_uuid = source_rec["uuid"]
+                for f in kb_files:
+                    if f.get("source_uuid") == s_uuid:
+                        f_path = workspace_root / f["path"]
+                        if f_path.exists() and f_path not in seen:
+                            seen.add(f_path)
+                            existing.append(f_path)
+        except ValueError:
+            pass
+
+    return existing
+
+
+def compute_renamed_artifact_path(
+    artifact_path: Path | str,
+    old_source: Path | str,
+    new_source: Path | str,
+) -> Path | None:
+    """
+    Computes the target path for a system-generated artifact when its parent dataset is renamed/moved.
+
+    Examples:
+      data/survey.csv.stats.csv   -> data/survey_2026.csv.stats.csv
+      data/survey.stats.csv       -> data/survey_2026.stats.csv
+      data/survey.description.md  -> data/survey_2026.description.md
+      raw/survey.csv.idx          -> cleaned/survey_2026.csv.idx
+    """
+    art_p = Path(artifact_path)
+    old_p = Path(old_source)
+    new_p = Path(new_source)
+
+    old_name = old_p.name
+    old_stem = old_p.stem
+    new_name = new_p.name
+    new_stem = new_p.stem
+    new_parent = new_p.parent
+
+    art_name = art_p.name
+
+    if art_name.startswith(f"{old_name}."):
+        suffix = art_name[len(old_name) :]
+        return new_parent / f"{new_name}{suffix}"
+    elif art_name.startswith(f"{old_stem}."):
+        suffix = art_name[len(old_stem) :]
+        return new_parent / f"{new_stem}{suffix}"
+
+    return None
 
 
 def is_fairify_up_to_date(source_path: Path | str) -> bool:

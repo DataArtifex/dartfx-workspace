@@ -32,11 +32,18 @@ from dartfx.workspace.models import (
     TreeNode,
     WorkspaceStats,
 )
+from dartfx.workspace.policy import (
+    PolicyEvaluator,
+    WorkspaceSettings,
+    default_workspace_settings,
+)
 from dartfx.workspace.scanner import Scanner
 from dartfx.workspace.utils import (
     compute_applicable_actions,
+    compute_renamed_artifact_path,
     detect_system_generated,
     get_fairify_status,
+    get_related_artifacts,
 )
 
 IGNORE_DIRS = {".dartfx", ".git", "__pycache__", "venv", ".venv"}
@@ -135,6 +142,37 @@ class Workspace:
         return self.dartfx_dir.exists() and self.dartfx_dir.is_dir()
 
     @property
+    def settings_path(self) -> Path:
+        """Path to the workspace settings JSON file inside .dartfx."""
+        return self.dartfx_dir / "settings.json"
+
+    def get_settings(self) -> WorkspaceSettings:
+        """Load workspace settings from .dartfx/settings.json, or return defaults."""
+        if self.settings_path.is_file():
+            try:
+                return WorkspaceSettings.model_validate_json(self.settings_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return default_workspace_settings()
+
+    def save_settings(self, settings: WorkspaceSettings) -> WorkspaceSettings:
+        """Persist workspace settings to .dartfx/settings.json."""
+        self.dartfx_dir.mkdir(parents=True, exist_ok=True)
+        self.settings_path.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
+        return settings
+
+    def update_settings(self, patch: dict[str, Any]) -> WorkspaceSettings:
+        """Deep-merge a partial settings dictionary into the workspace settings and save."""
+        current = self.get_settings().model_dump()
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(current.get(key), dict):
+                current[key] = {**current[key], **value}
+            else:
+                current[key] = value
+        updated = WorkspaceSettings.model_validate(current)
+        return self.save_settings(updated)
+
+    @property
     def kb(self) -> KnowledgeBase:
         if not self.is_initialized():
             raise RuntimeError("Workspace is not initialized. Run `workspace init` first.")
@@ -229,6 +267,7 @@ class Workspace:
             mime_type=kb_info.get("mime_type") if kb_info else None,
             is_generated=is_gen,
             generated_by=gen_by,
+            source_uuid=kb_info.get("source_uuid") if kb_info else None,
             fairify_status=fairify_stat,
             applicable_actions=actions,
         )
@@ -338,6 +377,7 @@ class Workspace:
                     file_type=kb_info["type"] if kb_info else "-",
                     file_format=kb_info["file_format"] if kb_info else "undetermined",
                     is_generated=is_gen,
+                    source_uuid=kb_info.get("source_uuid") if kb_info else None,
                     applicable_actions=actions,
                 )
 
@@ -454,6 +494,7 @@ class Workspace:
             updated_at=info["updated_at"],
             is_generated=is_gen,
             generated_by=gen_by,
+            source_uuid=info.get("source_uuid"),
             fairify_status=fairify_stat,
             applicable_actions=actions,
             attributes=attrs,
@@ -490,6 +531,7 @@ class Workspace:
             attributes=merged_attrs,
             is_generated=info.get("is_generated", False),
             generated_by=info.get("generated_by"),
+            source_uuid=info.get("source_uuid"),
         )
         return self.get_resource_detail(str(parsed_uuid))
 
@@ -507,8 +549,9 @@ class Workspace:
         overwrite: bool = False,
         auto_scan: bool = True,
         quota_bytes: int | None = None,
+        allow_policy_override: bool = False,
     ) -> FileEntry:
-        """Safely write uploaded bytes/stream into the workspace with quota enforcement and KB indexing."""
+        """Safely write uploaded bytes/stream into the workspace with quota, policy, and KB indexing."""
         dest_path = self.resolve_safe_path(dest_rel_path)
         if dest_path == self.path:
             raise ValueError("Destination must be a file path, not the workspace root.")
@@ -538,6 +581,15 @@ class Workspace:
                         written += len(chunk)
                         AccessPolicy.check_quota(current_usage, written, quota_bytes)
                         tmp_file.write(chunk)
+            rel_dest = dest_path.relative_to(self.path).as_posix()
+            PolicyEvaluator.evaluate_ingestion(
+                self.get_settings(),
+                dest_path,
+                rel_dest,
+                content_path=tmp_path,
+                size_bytes=written,
+                allow_override=allow_policy_override,
+            )
             tmp_path.replace(dest_path)
         except Exception:
             if tmp_path.exists():
@@ -630,8 +682,20 @@ class Workspace:
         target.mkdir(parents=True, exist_ok=True)
         return target
 
-    def move_path(self, src_rel: str, dst_rel: str) -> Path:
-        """Move or rename a file or directory while updating the Knowledge Base."""
+    def move_path(
+        self,
+        src_rel: str,
+        dst_rel: str,
+        *,
+        cascade_artifacts: bool = True,
+        allow_policy_override: bool = False,
+    ) -> Path:
+        """Move or rename a file or directory while updating the Knowledge Base.
+
+        If `cascade_artifacts` is True and the source is a user dataset (not system-generated),
+        any existing related system-generated artifacts (FAIRify / ReadStat metadata) are also
+        renamed and moved to match the new dataset name/location, preserving their persistent UUIDs.
+        """
         src = self.resolve_safe_path(src_rel)
         dst = self.resolve_safe_path(dst_rel)
         if src == self.path:
@@ -640,14 +704,48 @@ class Workspace:
             raise FileNotFoundError(f"Source path not found: {src_rel}")
 
         actual_dst = (dst / src.name) if dst.is_dir() else dst
+
+        PolicyEvaluator.evaluate_rename(
+            self.get_settings(),
+            src,
+            actual_dst,
+            workspace_root=self.path,
+            allow_override=allow_policy_override,
+        )
+
         actual_dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(dst))
+
+        moves_to_track: list[tuple[Path, Path]] = []
+
+        if src.is_file() and cascade_artifacts:
+            is_gen, _ = detect_system_generated(src)
+            if not is_gen:
+                all_kb_files = self.kb.get_all_files() if self.is_initialized() else None
+                artifacts = get_related_artifacts(src, kb_files=all_kb_files, workspace_root=self.path)
+                for art in artifacts:
+                    if art.exists() and art.is_file() and art != src:
+                        new_art_path = compute_renamed_artifact_path(art, src, actual_dst)
+                        if new_art_path and new_art_path != art:
+                            new_art_path.parent.mkdir(parents=True, exist_ok=True)
+                            shutil.move(str(art), str(new_art_path))
+                            moves_to_track.append((art, new_art_path))
+
+        shutil.move(str(src), str(actual_dst))
+        moves_to_track.append((src, actual_dst))
+
         if self.is_initialized():
-            self.scanner.handle_move(src, actual_dst)
+            self.scanner.handle_moves(moves_to_track)
         return actual_dst
 
-    def copy_path(self, src_rel: str, dst_rel: str, quota_bytes: int | None = None) -> Path:
-        """Copy a file or directory inside the workspace with optional quota enforcement."""
+    def copy_path(
+        self,
+        src_rel: str,
+        dst_rel: str,
+        quota_bytes: int | None = None,
+        *,
+        allow_policy_override: bool = False,
+    ) -> Path:
+        """Copy a file or directory inside the workspace with optional quota and policy enforcement."""
         src = self.resolve_safe_path(src_rel)
         dst = self.resolve_safe_path(dst_rel)
         if src == self.path:
@@ -662,6 +760,15 @@ class Workspace:
         if src.is_dir():
             shutil.copytree(src, actual_dst, dirs_exist_ok=True)
         else:
+            rel_dst = actual_dst.relative_to(self.path).as_posix()
+            PolicyEvaluator.evaluate_ingestion(
+                self.get_settings(),
+                actual_dst,
+                rel_dst,
+                content_path=src,
+                size_bytes=incoming_size,
+                allow_override=allow_policy_override,
+            )
             actual_dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(src, actual_dst)
 
@@ -669,21 +776,44 @@ class Workspace:
             self.scanner.scan_path(actual_dst)
         return actual_dst
 
-    def remove_path(self, rel_path: str) -> None:
-        """Remove a file or directory inside the workspace and prune the Knowledge Base."""
+    def remove_path(self, rel_path: str, *, delete_artifacts: bool = True) -> list[str]:
+        """Remove a file or directory inside the workspace and prune the Knowledge Base.
+
+        If `delete_artifacts` is True and the target is a user-provided file (not system-generated),
+        any existing related FAIRification / system-generated artifacts (such as .stats.csv,
+        .schema.json, .freqs.csv, .idx, .description.md, .readstat.json) will also be deleted.
+
+        Returns:
+            list[str]: The relative paths of all deleted files/directories.
+        """
         target = self.resolve_safe_path(rel_path)
         if target == self.path:
             raise ValueError("Cannot remove workspace root.")
         if not target.exists():
             raise FileNotFoundError(f"Path not found: {rel_path}")
 
+        removed_targets: list[Path] = [target]
+
         if target.is_dir():
             shutil.rmtree(target)
         else:
+            if delete_artifacts:
+                is_gen, _ = detect_system_generated(target)
+                if not is_gen:
+                    all_kb_files = self.kb.get_all_files() if self.is_initialized() else None
+                    for art in get_related_artifacts(target, kb_files=all_kb_files, workspace_root=self.path):
+                        if art.exists() and art.is_file() and art != target:
+                            try:
+                                art.unlink()
+                                removed_targets.append(art)
+                            except OSError:
+                                pass
             target.unlink()
 
         if self.is_initialized():
-            self.scanner.handle_remove(target)
+            self.scanner.handle_remove(removed_targets)
+
+        return [t.relative_to(self.path).as_posix() for t in removed_targets]
 
     def query_sparql(self, query_str: str) -> SparqlResult:
         """Execute a read-only SPARQL query against the workspace Knowledge Base."""
