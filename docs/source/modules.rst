@@ -1,6 +1,6 @@
 
 dartfx-workspace
----------
+================
 
 .. automodule:: dartfx.workspace
    :members:

@@ -11,6 +11,7 @@ import blake3
 
 from dartfx.workspace.kb import KnowledgeBase
 from dartfx.workspace.sniffers import sniff_file
+from dartfx.workspace.utils import detect_system_generated
 
 
 class Scanner:
@@ -85,10 +86,14 @@ class Scanner:
                 continue
 
             file_type, file_format, mime_type, attributes = self._sniff(p)
+            is_gen, gen_by = detect_system_generated(p)
 
             if rel_path_str in existing_path_map:
                 old_f = existing_path_map[rel_path_str]
-                if old_f["blake3_hash"] != b3hash or old_f["size_bytes"] != size:
+                if old_f.get("is_generated"):
+                    is_gen = True
+                    gen_by = old_f.get("generated_by") or gen_by
+                if old_f["blake3_hash"] != b3hash or old_f["size_bytes"] != size or old_f.get("is_generated") != is_gen:
                     self.kb.upsert_file_resource(
                         uuid.UUID(old_f["uuid"]),
                         p.relative_to(self.workspace_path),
@@ -100,6 +105,8 @@ class Scanner:
                         file_format=file_format,
                         mime_type=mime_type,
                         attributes=attributes,
+                        is_generated=is_gen,
+                        generated_by=gen_by,
                     )
             else:
                 # Path not tracked, check if renamed
@@ -110,6 +117,9 @@ class Scanner:
                     if not old_path_p.exists():
                         # It's a rename! Recover the UUID
                         uuid_to_use = uuid.UUID(suspected_old_file["uuid"])
+                        if suspected_old_file.get("is_generated"):
+                            is_gen = True
+                            gen_by = suspected_old_file.get("generated_by") or gen_by
                         del existing_hash_map[b3hash]
 
                 self.kb.upsert_file_resource(
@@ -123,6 +133,8 @@ class Scanner:
                     file_format=file_format,
                     mime_type=mime_type,
                     attributes=attributes,
+                    is_generated=is_gen,
+                    generated_by=gen_by,
                 )
 
         self.kb.save()
@@ -145,19 +157,31 @@ class Scanner:
 
         self.kb.save()
 
-    def scan_path(self, path: Path):
+    def scan_path(
+        self,
+        path: Path,
+        *,
+        is_generated: bool | None = None,
+        generated_by: str | None = None,
+    ):
         """Perform targeted profiling and indexing for a single path (file or directory)."""
         if not path.exists():
             return
 
         if path.is_file():
-            self._scan_single_file(path)
+            self._scan_single_file(path, is_generated=is_generated, generated_by=generated_by)
         else:
             for p in path.rglob("*"):
                 if p.is_file():
-                    self._scan_single_file(p)
+                    self._scan_single_file(p, is_generated=is_generated, generated_by=generated_by)
 
-    def _scan_single_file(self, p: Path):
+    def _scan_single_file(
+        self,
+        p: Path,
+        *,
+        is_generated: bool | None = None,
+        generated_by: str | None = None,
+    ):
         """Helper to scan just one file and update KB."""
         rel_parts = p.relative_to(self.workspace_path).parts
         if any(part.startswith(".") or part in self.ignore_dirs for part in rel_parts):
@@ -177,8 +201,24 @@ class Scanner:
         file_type, file_format, mime_type, attributes = self._sniff(p)
         existing_info = self.kb.get_file_by_path(rel_path_str)
 
+        # Resolve is_generated and generated_by
+        resolved_gen = is_generated
+        resolved_by = generated_by
+        if resolved_gen is None:
+            if existing_info and existing_info.get("is_generated"):
+                resolved_gen = True
+                resolved_by = existing_info.get("generated_by") or resolved_by
+            else:
+                detected_gen, detected_by = detect_system_generated(p)
+                resolved_gen = detected_gen
+                resolved_by = detected_by or resolved_by
+
         if existing_info:
-            if existing_info["blake3_hash"] != b3hash or existing_info["size_bytes"] != size:
+            if (
+                existing_info["blake3_hash"] != b3hash
+                or existing_info["size_bytes"] != size
+                or existing_info.get("is_generated") != resolved_gen
+            ):
                 self.kb.upsert_file_resource(
                     uuid.UUID(existing_info["uuid"]),
                     p.relative_to(self.workspace_path),
@@ -190,6 +230,8 @@ class Scanner:
                     file_format=file_format,
                     mime_type=mime_type,
                     attributes=attributes,
+                    is_generated=bool(resolved_gen),
+                    generated_by=resolved_by,
                 )
         else:
             self.kb.upsert_file_resource(
@@ -203,6 +245,8 @@ class Scanner:
                 file_format=file_format,
                 mime_type=mime_type,
                 attributes=attributes,
+                is_generated=bool(resolved_gen),
+                generated_by=resolved_by,
             )
 
     def handle_move(self, src: Path, actual_dst: Path):
@@ -241,6 +285,8 @@ class Scanner:
                     file_format=file_format,
                     mime_type=mime_type,
                     attributes=attributes,
+                    is_generated=f.get("is_generated", False),
+                    generated_by=f.get("generated_by"),
                 )
 
         # Crucial: Save the graph after mass-moving resources

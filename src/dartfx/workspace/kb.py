@@ -10,8 +10,30 @@ from uuid import UUID
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import DCTERMS, RDF, XSD
 
+from dartfx.workspace.models import SparqlResult
+from dartfx.workspace.utils import detect_system_generated
+
 DARTFX = Namespace("https://dataartifex.org/workspace/")
 SCHEMA = Namespace("https://schema.org/")
+
+_RDF_FORMAT_ALIASES: dict[str, str] = {
+    "ttl": "turtle",
+    "turtle": "turtle",
+    "jsonld": "json-ld",
+    "json-ld": "json-ld",
+    "rdfxml": "xml",
+    "xml": "xml",
+    "n3": "n3",
+    "nt": "nt",
+}
+
+
+def _normalize_rdf_format(rdf_format: str) -> str:
+    fmt = _RDF_FORMAT_ALIASES.get(rdf_format.strip().lower())
+    if not fmt:
+        allowed = ", ".join(sorted(_RDF_FORMAT_ALIASES.keys()))
+        raise ValueError(f"Unsupported RDF format '{rdf_format}'. Expected one of: {allowed}")
+    return fmt
 
 
 class KnowledgeBase:
@@ -96,6 +118,8 @@ class KnowledgeBase:
         file_format: str = "undetermined",
         mime_type: str | None = None,
         attributes: dict[str, str] | None = None,
+        is_generated: bool = False,
+        generated_by: str | None = None,
     ):
         """Adds or updates a file resource within the RDF graph."""
         uri = self.get_resource_uri(uuid)
@@ -125,6 +149,11 @@ class KnowledgeBase:
         self.graph.add((uri, DARTFX.fileFormat, Literal(file_format)))
         if mime_type:
             self.graph.add((uri, DARTFX.mimeType, Literal(mime_type)))
+
+        # Provenance / system generation
+        self.graph.add((uri, DARTFX.isGenerated, Literal(is_generated, datatype=XSD.boolean)))
+        if generated_by:
+            self.graph.add((uri, DARTFX.generatedBy, Literal(generated_by)))
 
         # Metrics
         self.graph.add((uri, DARTFX.sizeBytes, Literal(size_bytes, datatype=XSD.integer)))
@@ -161,62 +190,10 @@ class KnowledgeBase:
         if old_path_str:
             self._cleanup_old_resource(old_path_str)
 
-    def get_file_by_path(self, path_str: str) -> dict | None:
-        """Looks up a file resource efficiently using its path."""
-        q = """
+    _FILE_SELECT_QUERY = """
         PREFIX dartfx: <https://dataartifex.org/workspace/>
         PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?size ?hash ?type ?format ?mime ?created ?modified
-        WHERE {
-            ?uri a dartfx:FileResource ;
-                 dartfx:uuid ?uuid ;
-                 dartfx:path ?path ;
-                 dartfx:sizeBytes ?size ;
-                 dartfx:blake3 ?hash ;
-                 dartfx:fileType ?type ;
-                 dartfx:fileFormat ?format ;
-                 dcterms:created ?created ;
-                 dcterms:modified ?modified .
-               OPTIONAL { ?uri dartfx:mimeType ?mime . }
-        }
-        """
-        for row in self.graph.query(q, initBindings={"path": Literal(path_str)}):
-            r: Any = row
-            return {
-                "uuid": str(r.uuid),
-                "path": path_str,
-                "size_bytes": int(r.size),
-                "blake3_hash": str(r.hash),
-                "type": str(r.type),
-                "file_format": str(r.format),
-                "mime_type": str(r.mime) if hasattr(r, "mime") and r.mime else None,
-                "created_at": str(r.created),
-                "updated_at": str(r.modified),
-            }
-        return None
-
-    def get_resource_attributes(self, uuid: UUID) -> dict[str, str]:
-        """Returns all dynamic attributes for a resource in the DARTFX namespace."""
-        uri = self.get_resource_uri(uuid)
-        attrs = {}
-        for p, o in self.graph.predicate_objects(uri):
-            p_str = str(p)
-            if p_str.startswith(str(DARTFX)):
-                key = p_str.replace(str(DARTFX), "")
-                # Skip core fields we handle separately
-                if key not in ["uuid", "path", "fileType", "fileFormat", "sizeBytes", "blake3", "mimeType"]:
-                    attrs[key] = str(o)
-        return attrs
-
-    def get_all_files(self) -> list[dict]:
-        """
-        Extract files currently tracked in the KB.
-        Returns a list of dicts with uuid, path, hash etc.
-        """
-        q = """
-        PREFIX dartfx: <https://dataartifex.org/workspace/>
-        PREFIX dcterms: <http://purl.org/dc/terms/>
-        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?mime ?created ?modified
+        SELECT ?uri ?uuid ?path ?size ?hash ?type ?format ?mime ?created ?modified ?is_generated ?generated_by
         WHERE {
             ?uri a dartfx:FileResource ;
                  dartfx:uuid ?uuid ;
@@ -228,25 +205,138 @@ class KnowledgeBase:
                  dcterms:created ?created ;
                  dcterms:modified ?modified .
             OPTIONAL { ?uri dartfx:mimeType ?mime . }
+            OPTIONAL { ?uri dartfx:isGenerated ?is_generated . }
+            OPTIONAL { ?uri dartfx:generatedBy ?generated_by . }
         }
         """
-        results = []
-        for row in self.graph.query(q):
-            r: Any = row
-            results.append(
-                {
-                    "uuid": str(r.uuid),
-                    "path": str(r.path),
-                    "size_bytes": int(r.size),
-                    "blake3_hash": str(r.hash),
-                    "type": str(r.type),
-                    "file_format": str(r.format),
-                    "mime_type": str(r.mime) if hasattr(r, "mime") and r.mime else None,
-                    "created_at": str(r.created),
-                    "updated_at": str(r.modified),
-                }
+
+    @staticmethod
+    def _row_to_file_dict(row: Any, override_path: str | None = None) -> dict[str, Any]:
+        target_path = override_path if override_path is not None else str(row.path)
+        is_gen_val = getattr(row, "is_generated", None)
+        if is_gen_val is not None:
+            is_generated = str(is_gen_val).lower() in ("true", "1")
+        else:
+            is_generated, _ = detect_system_generated(target_path)
+
+        gen_by_val = getattr(row, "generated_by", None)
+        if gen_by_val is not None and str(gen_by_val).strip():
+            generated_by = str(gen_by_val).strip()
+        else:
+            _, generated_by = detect_system_generated(target_path)
+
+        return {
+            "uuid": str(row.uuid),
+            "path": target_path,
+            "size_bytes": int(row.size),
+            "blake3_hash": str(row.hash),
+            "type": str(row.type),
+            "file_format": str(row.format),
+            "mime_type": str(row.mime) if hasattr(row, "mime") and row.mime else None,
+            "created_at": str(row.created),
+            "updated_at": str(row.modified),
+            "is_generated": is_generated,
+            "generated_by": generated_by,
+        }
+
+    def get_file_by_path(self, path_str: str) -> dict[str, Any] | None:
+        """Looks up a file resource efficiently using its path."""
+        for row in self.graph.query(self._FILE_SELECT_QUERY, initBindings={"path": Literal(path_str)}):
+            return self._row_to_file_dict(row, override_path=path_str)
+        return None
+
+    def get_file_by_uuid(self, uuid_val: UUID | str) -> dict[str, Any] | None:
+        """Looks up a file resource efficiently using its UUID."""
+        uuid_str = str(uuid_val)
+        for row in self.graph.query(self._FILE_SELECT_QUERY, initBindings={"uuid": Literal(uuid_str)}):
+            return self._row_to_file_dict(row)
+        return None
+
+    def get_resource_attributes(self, uuid: UUID) -> dict[str, str]:
+        """Returns all dynamic attributes for a resource in the DARTFX namespace."""
+        uri = self.get_resource_uri(uuid)
+        attrs = {}
+        for p, o in self.graph.predicate_objects(uri):
+            p_str = str(p)
+            if p_str.startswith(str(DARTFX)):
+                key = p_str.replace(str(DARTFX), "")
+                # Skip core fields we handle separately
+                if key not in [
+                    "uuid",
+                    "path",
+                    "fileType",
+                    "fileFormat",
+                    "sizeBytes",
+                    "blake3",
+                    "mimeType",
+                    "isGenerated",
+                    "generatedBy",
+                ]:
+                    attrs[key] = str(o)
+        return attrs
+
+    def get_all_files(self) -> list[dict[str, Any]]:
+        """
+        Extract files currently tracked in the KB.
+        Returns a list of dicts with uuid, path, hash etc.
+        """
+        return [self._row_to_file_dict(row) for row in self.graph.query(self._FILE_SELECT_QUERY)]
+
+    def export_resource_rdf(self, uuid_val: UUID | str, rdf_format: str = "turtle") -> str:
+        """Serialize RDF triples for a specific file resource in the requested format."""
+        fmt = _normalize_rdf_format(rdf_format)
+        parsed_uuid = uuid_val if isinstance(uuid_val, UUID) else UUID(str(uuid_val))
+        uri = self.get_resource_uri(parsed_uuid)
+
+        triples = list(self.graph.triples((uri, None, None)))
+        if not triples:
+            raise KeyError(f"Resource not found in Knowledge Base: {parsed_uuid}")
+
+        temp_graph = Graph()
+        temp_graph.bind("dcterms", DCTERMS)
+        temp_graph.bind("schema", SCHEMA)
+        temp_graph.bind("dartfx", DARTFX)
+        for triple in triples:
+            temp_graph.add(triple)
+        return temp_graph.serialize(format=fmt)
+
+    def export_workspace_rdf(self, rdf_format: str = "turtle") -> str:
+        """Serialize the full workspace RDF Knowledge Base graph."""
+        fmt = _normalize_rdf_format(rdf_format)
+        return self.graph.serialize(format=fmt)
+
+    def query_sparql(self, query_str: str) -> SparqlResult:
+        """Execute a read-only SPARQL query (SELECT, ASK, CONSTRUCT, DESCRIBE) against the KB."""
+        cleaned = query_str.strip()
+        if not cleaned:
+            raise ValueError("SPARQL query must not be empty.")
+
+        res: Any = self.graph.query(cleaned)
+        res_type = getattr(res, "type", None)
+
+        if res_type == "ASK":
+            val = "true" if bool(res.askAnswer) else "false"
+            return SparqlResult(columns=["result"], rows=[{"result": val}], row_count=1)
+
+        if res_type in ("CONSTRUCT", "DESCRIBE") or (hasattr(res, "graph") and res.graph is not None):
+            triples_rows: list[dict[str, str | None]] = []
+            for s, p, o in res.graph:
+                triples_rows.append({"subject": str(s), "predicate": str(p), "object": str(o)})
+            return SparqlResult(
+                columns=["subject", "predicate", "object"],
+                rows=triples_rows,
+                row_count=len(triples_rows),
             )
-        return results
+
+        columns = [str(v) for v in (res.vars or [])]
+        rows: list[dict[str, str | None]] = []
+        for row in res:
+            row_dict: dict[str, str | None] = {}
+            for idx, col in enumerate(columns):
+                cell = row[idx]
+                row_dict[col] = str(cell) if cell is not None else None
+            rows.append(row_dict)
+        return SparqlResult(columns=columns, rows=rows, row_count=len(rows))
 
     def wipe(self):
         """Wipes the entire knowledge base by deleting all resource files and clearing the graph."""

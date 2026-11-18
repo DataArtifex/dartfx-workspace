@@ -90,5 +90,5 @@ The shell provides standard utilities that operate relative to the workspace roo
 ## Visual Legend
 *   **✔ (Green)**: File is indexed and registered in the RDF Knowledge Base.
 *   **✘ (Red)**: File exists on disk but is not yet registered (run `scan` to index).
-*   **[dim](type)**: The detected classification of the file (e.g., `data`, `code`).
+*   `[dim](type)`: The detected classification of the file (e.g., `data`, `code`).
 *   **Bold Blue**: Indicates a directory.

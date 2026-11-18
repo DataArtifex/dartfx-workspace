@@ -27,7 +27,17 @@ from rich.tree import Tree
 
 from dartfx.workspace.__about__ import __version__
 from dartfx.workspace.core import Workspace
-from dartfx.workspace.utils import format_size
+from dartfx.workspace.utils import (
+    SUPPORTED_FAIRIFY_SUFFIXES as SUPPORTED_QSV_FAIRIFY_SUFFIXES,
+)
+from dartfx.workspace.utils import (
+    SUPPORTED_READSTAT_SUFFIXES as SUPPORTED_READSTAT_INPUT_SUFFIXES,
+)
+from dartfx.workspace.utils import (
+    detect_system_generated,
+    format_size,
+    is_fairify_up_to_date,
+)
 
 console = Console()
 
@@ -57,8 +67,6 @@ COMMANDS = [
     "?",
 ]
 IGNORE_DIRS = {".dartfx", ".git", "__pycache__", "venv", ".venv"}
-SUPPORTED_READSTAT_INPUT_SUFFIXES = {".dta", ".por", ".sav", ".sas7bdat", ".xpt", ".zsav"}
-SUPPORTED_QSV_FAIRIFY_SUFFIXES = {".csv", ".parquet", ".pq"}
 
 
 class ShellContext:
@@ -829,14 +837,19 @@ def handle_fairify(ctx: ShellContext, args: list[str]):
     """Run the qsv analysis bundle on a supported data file."""
     source_arg: str | None = None
     describe = False
+    force = False
 
     for arg in args:
         if arg == "--describe":
             describe = True
             continue
 
+        if arg in ("--force", "-f"):
+            force = True
+            continue
+
         if arg in ("-h", "--help"):
-            typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe]")
+            typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe] [--force]")
             return
 
         if arg.startswith("-"):
@@ -850,7 +863,7 @@ def handle_fairify(ctx: ShellContext, args: list[str]):
         source_arg = arg
 
     if not source_arg:
-        typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe]")
+        typer.echo("Usage: fairify <input.(csv|parquet|pq)> [--describe] [--force]")
         return
 
     qsv_bin = shutil.which("qsv")
@@ -872,6 +885,31 @@ def handle_fairify(ctx: ShellContext, args: list[str]):
         typer.secho(
             f"fairify: unsupported source type '{source_path.suffix}'. Expected one of: {allowed}",
             fg=typer.colors.RED,
+        )
+        return
+
+    source_is_gen, _ = detect_system_generated(source_path)
+    if ctx.workspace and ctx.workspace.is_initialized():
+        try:
+            rel_str = source_path.relative_to(ctx.workspace.path).as_posix()
+            kb_entry = ctx.workspace.kb.get_file_by_path(rel_str)
+            if kb_entry and kb_entry.get("is_generated"):
+                source_is_gen = True
+        except ValueError:
+            pass
+
+    if source_is_gen:
+        typer.secho(
+            f"fairify: cannot fairify system-generated artifact: {source_arg}. "
+            "Only user-provided tabular files can be FAIRified.",
+            fg=typer.colors.RED,
+        )
+        return
+
+    if not force and is_fairify_up_to_date(source_path):
+        typer.secho(
+            f"fairify: '{source_arg}' has already been FAIRified and is up-to-date. Use --force to re-run.",
+            fg=typer.colors.YELLOW,
         )
         return
 
